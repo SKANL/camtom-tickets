@@ -1,0 +1,26 @@
+slas:
+  - id: responder_usuario
+    label: "Responder al usuario"
+    applicablePriorities: [1, 2, 3, 4]
+    maxMinutes: 5
+    warningThreshold: 0.2
+  - id: recuperar_usuario
+    label: "Recuperar usuario"
+    applicablePriorities: [1, 2, 3, 4]
+    maxMinutes: 10
+    warningThreshold: 0.2
+  - id: avisar_equipo
+    label: "Avisar al equipo"
+    applicablePriorities: [1]
+    maxMinutes: 10
+    warningThreshold: 0.2
+  - id: resolver_iniciar
+    label: "Resolver — Iniciar"
+    applicablePriorities: [1, 2, 3, 4]
+    maxMinutes: 15
+    warningThreshold: 0.2
+  - id: resolver_definitiva
+    label: "Resolver — Respuesta definitiva"
+    applicablePriorities: [1, 2, 3, 4]
+    maxMinutes: 45
+    warningThreshold: 0.2

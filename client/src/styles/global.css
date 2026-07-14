@@ -1,0 +1,264 @@
+@import './variables.css';
+@import './animations.css';
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-body);
+  font-weight: 400;
+  background-color: var(--bg-dark);
+  color: var(--color-mayo);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Kitchen wall tile texture */
+  background-image:
+    /* Ambient colored light spots like a warm kitchen */
+    radial-gradient(ellipse at 15% 30%, rgba(255, 99, 71, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 20%, rgba(255, 140, 0, 0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 90%, rgba(76, 175, 80, 0.04) 0%, transparent 50%),
+    /* Subtle hex/tile pattern overlay */
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 40px,
+      rgba(255, 255, 255, 0.015) 40px,
+      rgba(255, 255, 255, 0.015) 41px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 40px,
+      rgba(255, 255, 255, 0.015) 40px,
+      rgba(255, 255, 255, 0.015) 41px
+    );
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
+button {
+  font-family: var(--font-body);
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--color-mustard);
+  outline-offset: 2px;
+}
+
+/* Kitchen ticket card - receipt paper style */
+.ticket-card {
+  position: relative;
+  background: var(--bg-card);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  transition: transform 0.25s var(--timing-bounce), box-shadow 0.25s var(--timing-smooth);
+}
+
+.ticket-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--color-tomato), var(--color-mustard), var(--color-lettuce));
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  opacity: 0.6;
+}
+
+.ticket-card:hover {
+  transform: translateY(-4px) rotate(0deg) !important;
+  box-shadow: var(--shadow-card-hover);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+/* Priority section divider */
+.priority-section {
+  position: relative;
+}
+
+.priority-section::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: var(--space-md);
+  right: var(--space-md);
+  height: 1px;
+  background: repeating-linear-gradient(
+    90deg,
+    currentColor,
+    currentColor 6px,
+    transparent 6px,
+    transparent 12px
+  );
+  opacity: 0.15;
+}
+
+/* Kitchen badge - ticket counter */
+.kitchen-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  min-width: 28px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  color: #fff;
+  letter-spacing: 0.05em;
+  position: relative;
+}
+
+/* SLA Timer kitchen timer style */
+.sla-timer {
+  font-family: var(--font-display);
+  letter-spacing: 0.08em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+}
+
+.sla-timer--ok {
+  background: rgba(76, 175, 80, 0.15);
+  color: var(--color-lettuce);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.sla-timer--warning {
+  background: rgba(255, 215, 0, 0.15);
+  color: var(--color-mustard);
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  animation: pulseWarning 1.5s ease-in-out infinite;
+}
+
+.sla-timer--breached {
+  background: rgba(211, 47, 47, 0.2);
+  color: var(--color-ketchup);
+  border: 1px solid rgba(211, 47, 47, 0.4);
+  animation: shakeBreach 0.6s var(--timing-bounce);
+}
+
+/* Scrollbar styling for kitchen theme */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-header);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-card);
+  border-radius: 5px;
+  border: 2px solid var(--bg-header);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-avocado);
+}
+
+/* Boneyard skeleton integration */
+[data-boneyard-skeleton] {
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+/* Order board columns */
+.order-board {
+  display: flex;
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+}
+
+.order-column {
+  flex: 1;
+  min-width: 320px;
+  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  scroll-snap-align: start;
+}
+
+/* Section headers with chef styling */
+.chef-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-md);
+  position: relative;
+}
+
+.chef-section-header::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: var(--space-md);
+  right: var(--space-md);
+  height: 2px;
+  background: linear-gradient(90deg, currentColor 40%, transparent 100%);
+  opacity: 0.4;
+  border-radius: 1px;
+}
+
+/* Priority dot indicator */
+.priority-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 6px currentColor;
+}
+
+/* Empty state styling */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl);
+  color: rgba(255, 255, 255, 0.2);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  letter-spacing: 0.05em;
+  text-align: center;
+  gap: var(--space-md);
+}
+
+.empty-state-icon {
+  font-size: 3rem;
+  opacity: 0.4;
+}

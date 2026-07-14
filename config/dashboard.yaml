@@ -1,0 +1,61 @@
+displayOrder:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 0
+kitchenPhrases:
+  breachedTimer: Order BURNED!
+  emptyState: No tickets — kitchen is quiet!
+  warningTimer: Order is getting cold!
+pollingInterval: 30000
+priorityLabels:
+  '0':
+    color: var(--priority-none)
+    dotColor: '#9E9E9E'
+    label: No Priority
+  '1':
+    color: var(--priority-urgent)
+    dotColor: '#D32F2F'
+    label: Urgent
+  '2':
+    color: var(--priority-high)
+    dotColor: '#FF8C00'
+    label: High
+  '3':
+    color: var(--priority-medium)
+    dotColor: '#3B82F6'
+    label: Medium
+  '4':
+    color: var(--priority-low)
+    dotColor: '#4CAF50'
+    label: Low
+report:
+  enabled: true
+  slaWindowHours: 24
+displayOptions:
+  timerStyle: circle
+  animationIntensity: full
+stateLabels:
+  canceled:
+    icon: x
+    label: 86'd
+  completed:
+    icon: check
+    label: Done
+  started:
+    icon: fork-knife
+    label: Prep
+  triaged:
+    icon: search
+    label: Triaged
+  unstarted:
+    icon: edit
+    label: Order In
+teamMembers:
+  - Román
+  - Pedro
+  - Lucía
+  - Carlos
+  - Ana
+title: Camtom Ticket Dashboard

@@ -1,0 +1,210 @@
+import React, { useState, useEffect } from 'react';
+import { SoundToggle } from './SoundToggle';
+import { formatTime } from '../utils/format';
+import { ConfigResponse } from '@camtom/shared';
+import { IconChefHat, IconClipboard, IconChart, IconSettings, priorityIcons } from './Icons';
+
+interface HeaderProps {
+  title: string;
+  isMuted: boolean;
+  onToggleMute: () => void;
+  onToggleReport: () => void;
+  showReport: boolean;
+  isFriday: boolean;
+  config?: ConfigResponse | null;
+  onOpenSettings?: () => void;
+}
+
+export function Header({ title, isMuted, onToggleMute, onToggleReport, showReport, isFriday, config, onOpenSettings }: HeaderProps) {
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <header
+      style={{
+        background: 'linear-gradient(180deg, var(--bg-header) 0%, #2C1810 100%)',
+        padding: 'var(--space-md) var(--space-xl)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottom: '3px solid var(--color-tomato)',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+        zIndex: 10,
+        flexShrink: 0,
+        position: 'relative',
+      }}
+    >
+      {/* Decorative top line */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 3,
+          background: 'linear-gradient(90deg, var(--color-tomato), var(--color-mustard), var(--color-lettuce), var(--color-oil))',
+        }}
+      />
+
+      {/* Left: Branding */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+        <div
+          style={{
+            width: 44,
+            height: 44,
+            background: 'var(--color-tomato)',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 2px 8px rgba(255, 99, 71, 0.4)',
+            fontSize: '1.5rem',
+          }}
+          data-cuelume-press="chime"
+        >
+          <IconChefHat size={24} />
+        </div>
+        <div>
+          <h1
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 'var(--text-3xl)',
+              color: 'var(--color-tomato)',
+              letterSpacing: '0.05em',
+              margin: 0,
+              lineHeight: 1,
+              textShadow: '2px 2px 0 rgba(0,0,0,0.3)',
+            }}
+          >
+            {title}
+          </h1>
+          <p
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: 'var(--text-xs)',
+              color: 'rgba(255,255,255,0.35)',
+              margin: 0,
+              letterSpacing: '0.1em',
+            }}
+          >
+            ORDER BOARD · LIVE
+          </p>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          gap: 'var(--space-xl)',
+          alignItems: 'center',
+        }}
+      >
+        {Object.entries(config?.dashboard?.priorityLabels ?? {}).map(([priority, pl]) => {
+          const IconComp = priorityIcons[Number(priority)];
+          return (
+            <span key={priority} style={{ display: 'flex', alignItems: 'center', gap: 6, color: pl.color, fontSize: 'var(--text-sm)', fontFamily: 'var(--font-display)', letterSpacing: '0.05em', opacity: 0.85 }}>
+              <span className="priority-dot" style={{ color: pl.color, width: 8, height: 8 }} />
+              {IconComp ? <IconComp size={16} /> : null}
+              <span style={{ marginLeft: 2 }}>{pl.label}</span>
+            </span>
+          );
+        })}
+      </div>
+
+      {/* Right: Time, Report toggle, Sound */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+        {/* Friday indicator */}
+        {isFriday && !showReport && (
+          <span
+            style={{
+              fontSize: 'var(--text-sm)',
+              color: 'var(--color-mustard)',
+              fontFamily: 'var(--font-display)',
+              animation: 'pulseWarning 2s ease-in-out infinite',
+            }}
+          >
+            <IconChart size={16} /> Friday Report!
+          </span>
+        )}
+
+        {/* Toggle report button */}
+        <button
+          data-cuelume-press="toggle"
+          onClick={onToggleReport}
+          style={{
+            background: showReport ? 'var(--color-avocado)' : 'rgba(255,255,255,0.08)',
+            border: `2px solid ${showReport ? 'var(--color-avocado)' : 'rgba(255,255,255,0.15)'}`,
+            borderRadius: 'var(--radius-pill)',
+            padding: '8px 20px',
+            cursor: 'pointer',
+            color: '#fff',
+            fontFamily: 'var(--font-display)',
+            fontSize: 'var(--text-sm)',
+            letterSpacing: '0.05em',
+            transition: 'all 0.2s ease',
+            textShadow: '1px 1px 0 rgba(0,0,0,0.3)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = showReport ? 'var(--color-avocado)' : 'rgba(255,255,255,0.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = showReport ? 'var(--color-avocado)' : 'rgba(255,255,255,0.08)';
+          }}
+        >
+          {showReport ? <><IconClipboard size={16} /> Board</> : <><IconChart size={16} /> Report</>}
+        </button>
+
+        {/* Current time — styled like a kitchen clock */}
+        <div
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 'var(--text-2xl)',
+            color: 'var(--color-oil)',
+            letterSpacing: '0.08em',
+            minWidth: 110,
+            textAlign: 'center',
+            textShadow: '1px 1px 0 rgba(0,0,0,0.3)',
+            background: 'rgba(0,0,0,0.2)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '2px 12px',
+          }}
+        >
+          {formatTime(currentTime)}
+        </div>
+
+        {/* Settings */}
+        {onOpenSettings && (
+          <button
+            data-cuelume-press="toggle"
+            onClick={onOpenSettings}
+            title="Dashboard Settings"
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 'var(--radius-pill)',
+              width: 40,
+              height: 40,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'rgba(255,255,255,0.5)',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
+          >
+            <IconSettings size={20} />
+          </button>
+        )}
+
+        {/* Sound toggle */}
+        <SoundToggle isMuted={isMuted} onToggle={onToggleMute} />
+      </div>
+    </header>
+  );
+}

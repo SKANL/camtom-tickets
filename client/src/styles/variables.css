@@ -1,0 +1,87 @@
+:root {
+  /* Overcooked Color Palette */
+  --color-tomato: #FF6347;
+  --color-tomato-hsl: hsl(9, 100%, 64%);
+  --color-mustard: #FFD700;
+  --color-mustard-hsl: hsl(51, 100%, 50%);
+  --color-ketchup: #D32F2F;
+  --color-ketchup-hsl: hsl(0, 68%, 50%);
+  --color-lettuce: #4CAF50;
+  --color-lettuce-hsl: hsl(122, 39%, 49%);
+  --color-mayo: #FFFDD0;
+  --color-mayo-hsl: hsl(57, 100%, 91%);
+  --color-avocado: #6B8E23;
+  --color-avocado-hsl: hsl(80, 61%, 35%);
+  --color-oil: #FF8C00;
+  --color-oil-hsl: hsl(33, 100%, 50%);
+
+  /* Background */
+  --bg-dark: #2C1810;
+  --bg-card: #3E2723;
+  --bg-card-hover: #4E342E;
+  --bg-header: #1A0E0A;
+
+  /* Status Colors */
+  --sla-ok: var(--color-lettuce);
+  --sla-warning: var(--color-mustard);
+  --sla-breached: var(--color-ketchup);
+
+  /* Priority Colors */
+  --priority-urgent: var(--color-ketchup);
+  --priority-high: var(--color-oil);
+  --priority-medium: #3B82F6;
+  --priority-low: var(--color-lettuce);
+  --priority-none: #9E9E9E;
+
+  /* Typography */
+  --font-display: 'Bangers', cursive;
+  --font-body: 'Comic Neue', cursive;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+
+  /* Radii */
+  --radius-card: 24px;
+  --radius-pill: 999px;
+  --radius-sm: 8px;
+
+  /* Shadows */
+  --shadow-card: 0 4px 6px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2);
+  --shadow-card-hover: 0 8px 12px rgba(0, 0, 0, 0.4), 0 4px 8px rgba(0, 0, 0, 0.3);
+  --shadow-comic: 3px 3px 0 rgba(0, 0, 0, 0.3);
+
+  /* Timing */
+  --timing-bounce: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --timing-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 200ms;
+  --duration-normal: 400ms;
+  --duration-slow: 600ms;
+
+  /* Font sizes for TV readability */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+  --text-3xl: 2.5rem;
+  --text-4xl: 3.5rem;
+
+  /* Visual Overhaul — new custom properties */
+  --timer-bar-height: 8px;
+  --siren-border-color: var(--color-ketchup);
+  --arrival-duration: 2s;
+  --burnt-opacity-min: 0.4;
+
+  /* Gauge strip colors per priority */
+  --gauge-urgent: var(--color-ketchup);
+  --gauge-high: var(--color-oil);
+  --gauge-medium: #3B82F6;
+  --gauge-low: var(--color-lettuce);
+  --gauge-none: #9E9E9E;
+}

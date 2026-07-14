@@ -1,0 +1,229 @@
+/* Elastic bounce-in for new tickets */
+@keyframes bounceIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.3) rotate(-3deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05) rotate(1deg);
+  }
+  70% {
+    transform: scale(0.95) rotate(-0.5deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+.bounce-in {
+  animation: bounceIn var(--duration-slow) var(--timing-bounce);
+}
+
+/* Pulse effect for WARNING state */
+@keyframes pulseWarning {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.05);
+  }
+}
+
+.pulse-warning {
+  animation: pulseWarning 1s ease-in-out infinite;
+}
+
+/* Shake for BREACHED state */
+@keyframes shakeBreach {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-3px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(3px);
+  }
+}
+
+.shake-breach {
+  animation: shakeBreach 0.6s var(--timing-bounce);
+}
+
+/* Skeleton loading shimmer */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-card) 25%,
+    var(--bg-card-hover) 50%,
+    var(--bg-card) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* Fade out for skeletons being replaced */
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.fade-out {
+  animation: fadeOut 500ms ease-out forwards;
+}
+
+/* Cooking timer spin */
+@keyframes timerSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.timer-spin {
+  animation: timerSpin 2s linear infinite;
+}
+
+/* Slide in from right for new items */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.slide-in-right {
+  animation: slideInRight var(--duration-normal) var(--timing-bounce);
+}
+
+/* Typing dots loading */
+@keyframes typingDots {
+  0%, 20% {
+    content: '.';
+  }
+  40% {
+    content: '..';
+  }
+  60%, 100% {
+    content: '...';
+  }
+}
+
+/* Siren flash — rapid alternating border color for BREACHED state */
+@keyframes siren-flash {
+  0%, 100% {
+    border-color: var(--siren-border-color, var(--color-ketchup));
+    box-shadow: 0 0 8px rgba(211, 47, 47, 0.4);
+  }
+  25% {
+    border-color: var(--color-mustard);
+    box-shadow: 0 0 16px rgba(255, 215, 0, 0.6);
+  }
+  50% {
+    border-color: var(--siren-border-color, var(--color-ketchup));
+    box-shadow: 0 0 8px rgba(211, 47, 47, 0.4);
+  }
+  75% {
+    border-color: #fff;
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+  }
+}
+
+.siren-flash {
+  animation: siren-flash 0.5s ease-in-out infinite;
+}
+
+/* Arrival glow — soft halo on new ticket mount */
+@keyframes arrival-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 20px 8px rgba(255, 215, 0, 0.3);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 215, 0, 0);
+  }
+}
+
+.arrival-glow {
+  animation: arrival-glow var(--arrival-duration, 2s) ease-out;
+}
+
+/* Arrival bounce — playful hop on new ticket */
+@keyframes arrival-bounce {
+  0% {
+    transform: scale(0.8) rotate(-2deg);
+    opacity: 0;
+  }
+  40% {
+    transform: scale(1.08) rotate(1deg);
+    opacity: 1;
+  }
+  70% {
+    transform: scale(0.96) rotate(-0.5deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(var(--ticket-rotation, 0deg));
+    opacity: 1;
+  }
+}
+
+.arrival-bounce {
+  animation: arrival-bounce var(--arrival-duration, 0.4s) var(--timing-bounce);
+}
+
+/* Burnt fade — gradual opacity reduction near breach */
+@keyframes burnt-fade {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: var(--burnt-opacity-min, 0.4);
+  }
+}
+
+.burnt-fade {
+  animation: burnt-fade 1s ease-in forwards;
+}
+
+/* Urgent pulse — accelerating pulse for WARNING state */
+@keyframes urgent-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.8;
+  }
+}
+
+.urgent-pulse {
+  animation: urgent-pulse 1.5s ease-in-out infinite;
+}
