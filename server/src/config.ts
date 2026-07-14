@@ -4,7 +4,16 @@ import * as yaml from 'js-yaml';
 import * as crypto from 'crypto';
 import { SLAConfig, DashboardConfig, ConfigResponse } from '@camtom/shared';
 
-const CONFIG_DIR = path.resolve(__dirname, '../../config');
+function getConfigDir(): string {
+  // Allow override via env var (useful for Vercel / custom deployments)
+  if (process.env.CONFIG_DIR) return process.env.CONFIG_DIR;
+  // Vercel serverless runtime — project root is available via cwd
+  if (process.env.VERCEL) return path.resolve(process.cwd(), 'config');
+  // Local / dev — relative to this source file
+  return path.resolve(__dirname, '../../config');
+}
+
+const CONFIG_DIR = getConfigDir();
 
 interface RawSLAEntry {
   id: string;
