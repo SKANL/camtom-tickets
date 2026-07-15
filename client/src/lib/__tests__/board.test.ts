@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { zoneForIssue, timerColor, isToday, hasTicketLabel } from '../board';
-import { Issue } from '@camtom/shared';
+import { zoneForIssue, timerColor, isToday, hasTicketLabel, matchesTeam, activeTeamOf } from '../board';
+import { Issue, TeamBoardConfig } from '@camtom/shared';
 
 function issueWith(stateType: string, extra: Partial<Issue> = {}): Issue {
   return {
@@ -64,5 +64,46 @@ describe('hasTicketLabel', () => {
   it('false without it', () => {
     expect(hasTicketLabel(issueWith('started'))).toBe(false);
     expect(hasTicketLabel(issueWith('started', { labels: { nodes: [{ id: 'l', name: 'bug' }] } }))).toBe(false);
+  });
+});
+
+const TEAM_A = { id: 'A', name: 'Support' };
+const TEAM_B = { id: 'B', name: 'Eng' };
+const ticketLabel = { nodes: [{ id: 'l', name: 'ticket' }] };
+
+describe('matchesTeam', () => {
+  const activeStates: TeamBoardConfig = { id: 'A', name: 'Support', filter: 'active-states', timer: true };
+  const ticketOnly: TeamBoardConfig = { id: 'B', name: 'Eng', filter: 'ticket-label', timer: true };
+
+  it('no team configured → shows everything', () => {
+    expect(matchesTeam(issueWith('started', { team: TEAM_A }), undefined)).toBe(true);
+  });
+  it('rejects issues from a different team', () => {
+    expect(matchesTeam(issueWith('started', { team: TEAM_B }), activeStates)).toBe(false);
+  });
+  it('active-states → any issue of the team', () => {
+    expect(matchesTeam(issueWith('started', { team: TEAM_A }), activeStates)).toBe(true);
+  });
+  it('ticket-label → only labelled issues of the team', () => {
+    expect(matchesTeam(issueWith('started', { team: TEAM_B }), ticketOnly)).toBe(false);
+    expect(matchesTeam(issueWith('started', { team: TEAM_B, labels: ticketLabel }), ticketOnly)).toBe(true);
+  });
+});
+
+describe('activeTeamOf', () => {
+  const teams: TeamBoardConfig[] = [
+    { id: 'A', name: 'Support', filter: 'active-states', timer: true },
+    { id: 'B', name: 'Eng', filter: 'ticket-label', timer: true },
+  ];
+  it('returns the team matching activeTeamId', () => {
+    expect(activeTeamOf(teams, 'B')?.id).toBe('B');
+  });
+  it('falls back to the first team when id is unknown/undefined', () => {
+    expect(activeTeamOf(teams, 'ZZZ')?.id).toBe('A');
+    expect(activeTeamOf(teams, undefined)?.id).toBe('A');
+  });
+  it('undefined when no teams', () => {
+    expect(activeTeamOf([], 'A')).toBeUndefined();
+    expect(activeTeamOf(undefined, 'A')).toBeUndefined();
   });
 });

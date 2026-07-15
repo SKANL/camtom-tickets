@@ -183,12 +183,13 @@ function mapIssue(node: LinearIssueNode): Issue {
  * When set, only fetches issues where updatedAt >= since (1-2 pages max).
  */
 export async function fetchIssuesSince(since: string | null): Promise<Issue[]> {
-  const teamId = getTeamId();
   const allIssues: Issue[] = [];
   let cursor: string | null = null;
   let hasMore = true;
 
-  const filter: any = { team: { id: { eq: teamId } } };
+  // No team filter: reconcile covers every team (the webhook already writes all
+  // teams via allPublicTeams). The board selects the active team client-side.
+  const filter: any = {};
   if (since) {
     filter.updatedAt = { gte: since };
   }

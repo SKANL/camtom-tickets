@@ -60,6 +60,18 @@ export interface ZoneLabels {
   done: string;
 }
 
+/**
+ * A Linear team the board can show, with its own board-worthiness criterion.
+ * - 'ticket-label': only issues carrying the "ticket" label.
+ * - 'active-states': every issue of the team (zones split them; canceled hidden).
+ */
+export interface TeamBoardConfig {
+  id: string;
+  name: string;
+  filter: 'ticket-label' | 'active-states';
+  timer: boolean; // whether the SLA countdown applies to this team
+}
+
 export interface DashboardConfig {
   pollingInterval: number;
   title: string;
@@ -73,6 +85,8 @@ export interface DashboardConfig {
   };
   kitchenPhrases: KitchenPhrases;
   zoneLabels?: ZoneLabels;
+  teams?: TeamBoardConfig[];
+  activeTeamId?: string;
   displayOptions?: DisplayOptions;
 }
 

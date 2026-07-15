@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ConfigResponse, PriorityLabelConfig, KitchenPhrases, ZoneLabels, SLAConfig, DisplayOptions } from '@camtom/shared';
+import { ConfigResponse, PriorityLabelConfig, KitchenPhrases, ZoneLabels, TeamBoardConfig, SLAConfig, DisplayOptions } from '@camtom/shared';
 import { IconX, IconSettings, IconCheckmark } from './Icons';
 import { PRIORITY_LEVELS } from '../lib/priorities';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { GeneralTab } from './settings/GeneralTab';
+import { TeamsTab } from './settings/TeamsTab';
 import { DisplayTab } from './settings/DisplayTab';
 import { SlaTab } from './settings/SlaTab';
 import { LabelsTab } from './settings/LabelsTab';
@@ -18,6 +19,8 @@ export interface SettingsOverrides {
   priorityLabels?: Record<number, Partial<PriorityLabelConfig>>;
   kitchenPhrases?: Partial<KitchenPhrases>;
   zoneLabels?: Partial<ZoneLabels>;
+  teams?: TeamBoardConfig[];
+  activeTeamId?: string;
   slaWindowHours?: number;
   displayOptions?: Partial<DisplayOptions>;
 }
@@ -46,10 +49,11 @@ function saveOverrides(overrides: SettingsOverrides): void {
   }
 }
 
-type TabId = 'general' | 'display' | 'sla' | 'labels' | 'sounds';
+type TabId = 'general' | 'teams' | 'display' | 'sla' | 'labels' | 'sounds';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'general', label: 'General' },
+  { id: 'teams', label: 'Teams' },
   { id: 'display', label: 'Pantalla' },
   { id: 'sla', label: 'SLA' },
   { id: 'labels', label: 'Etiquetas y frases' },
@@ -81,6 +85,8 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
     ...config?.dashboard?.zoneLabels,
     ...overrides.zoneLabels,
   } as ZoneLabels;
+  const teams: TeamBoardConfig[] = overrides.teams ?? config?.dashboard?.teams ?? [];
+  const activeTeamId = overrides.activeTeamId ?? config?.dashboard?.activeTeamId ?? teams[0]?.id;
   const slaWindowHours = overrides.slaWindowHours ?? config?.dashboard?.report?.slaWindowHours ?? 24;
   const displayOptions: Partial<DisplayOptions> = {
     ...config?.dashboard?.displayOptions,
@@ -149,6 +155,18 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
       return next;
     });
   }, []);
+
+  const setActiveTeam = useCallback((id: string) => setOverride('activeTeamId', id), [setOverride]);
+
+  const setTeamField = useCallback((teamId: string, field: 'filter' | 'timer', value: string | boolean) => {
+    setOverrides((prev) => {
+      const base = prev.teams ?? config?.dashboard?.teams ?? [];
+      const nextTeams = base.map((t) => (t.id === teamId ? { ...t, [field]: value } : t));
+      const next = { ...prev, teams: nextTeams };
+      saveOverrides(next);
+      return next;
+    });
+  }, [config]);
 
   const addTeamMember = useCallback((name: string) => {
     if (!name.trim()) return;
@@ -251,6 +269,8 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
       if (overrides.zoneLabels !== undefined) {
         dashUpdate.zoneLabels = { ...config?.dashboard?.zoneLabels, ...overrides.zoneLabels };
       }
+      if (overrides.teams !== undefined) dashUpdate.teams = overrides.teams;
+      if (overrides.activeTeamId !== undefined) dashUpdate.activeTeamId = overrides.activeTeamId;
       if (overrides.displayOptions !== undefined) {
         dashUpdate.displayOptions = {
           ...config?.dashboard?.displayOptions,
@@ -450,6 +470,15 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
               addTeamMember={addTeamMember}
               removeTeamMember={removeTeamMember}
               setOverride={setOverride}
+            />
+          )}
+
+          {activeTab === 'teams' && (
+            <TeamsTab
+              teams={teams}
+              activeTeamId={activeTeamId}
+              setActiveTeam={setActiveTeam}
+              setTeamField={setTeamField}
             />
           )}
 

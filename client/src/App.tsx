@@ -9,8 +9,8 @@ import { Dashboard } from './components/Dashboard';
 import { FridayReport } from './components/FridayReport';
 import { SettingsPanel } from './components/SettingsPanel';
 import { FilterBar } from './components/FilterBar';
-import { ConfigResponse, DashboardConfig, FilterState, DisplayOptions, ZoneLabels } from '@camtom/shared';
-import { isToday, hasTicketLabel, zoneForIssue } from './lib/board';
+import { ConfigResponse, DashboardConfig, FilterState, DisplayOptions, ZoneLabels, TeamBoardConfig } from '@camtom/shared';
+import { isToday, zoneForIssue, matchesTeam, activeTeamOf } from './lib/board';
 
 const FILTER_STORAGE_KEY = 'camtom-filter-state';
 
@@ -35,6 +35,8 @@ interface SettingsOverrides {
   priorityLabels?: Record<number, Partial<import('@camtom/shared').PriorityLabelConfig>>;
   kitchenPhrases?: Partial<import('@camtom/shared').KitchenPhrases>;
   zoneLabels?: Partial<ZoneLabels>;
+  teams?: TeamBoardConfig[];
+  activeTeamId?: string;
   slaWindowHours?: number;
   displayOptions?: Partial<DisplayOptions>;
 }
@@ -50,6 +52,8 @@ function mergeConfig(base: ConfigResponse | null, overrides: SettingsOverrides):
       ...(overrides.teamMembers !== undefined ? { teamMembers: overrides.teamMembers } : {}),
       ...(overrides.kitchenPhrases !== undefined ? { kitchenPhrases: { ...base.dashboard.kitchenPhrases, ...overrides.kitchenPhrases } } : {}),
       ...(overrides.zoneLabels !== undefined ? { zoneLabels: { ...base.dashboard.zoneLabels, ...overrides.zoneLabels } as ZoneLabels } : {}),
+      ...(overrides.teams !== undefined ? { teams: overrides.teams } : {}),
+      ...(overrides.activeTeamId !== undefined ? { activeTeamId: overrides.activeTeamId } : {}),
       ...(overrides.slaWindowHours !== undefined ? { report: { ...base.dashboard.report, slaWindowHours: overrides.slaWindowHours } } : {}),
       ...(overrides.displayOptions !== undefined ? { displayOptions: { ...base.dashboard.displayOptions, ...overrides.displayOptions } } : {}),
       ...(overrides.priorityLabels !== undefined ? {
@@ -81,7 +85,16 @@ function App() {
   const { config: serverConfig } = useConfig();
   const config = mergeConfig(serverConfig, settingsOverrides);
   const { issues, loading, error } = useIssues();
-  const timers = useSLA(issues, config?.slas);
+
+  // Active team + its board-worthiness criterion (from config). The team selector
+  // in Settings just changes activeTeamId; each team carries its own filter/timer.
+  const activeTeam = activeTeamOf(config?.dashboard?.teams, config?.dashboard?.activeTeamId);
+  const teamIssues = useMemo(
+    () => issues.filter((i) => matchesTeam(i, activeTeam)),
+    [issues, activeTeam?.id, activeTeam?.filter],
+  );
+  // SLA countdown only when the active team has the timer enabled.
+  const timers = useSLA(teamIssues, activeTeam?.timer === false ? undefined : config?.slas);
   const sound = useSound();
   const prevIssuesRef = useRef<Set<string>>(new Set());
   const alertedTimersRef = useRef<Set<string>>(new Set());
@@ -89,11 +102,8 @@ function App() {
   const { catalog: metadata } = useMetadata();
 
   // Filter state — App is the single owner. Restored from localStorage; persisted below.
+  // The FilterBar is now a manual, secondary narrowing on top of the active-team filter.
   const [filter, setFilter] = useState<FilterState>(() => loadSavedFilter() ?? EMPTY_FILTER);
-
-  // Metadata-derived defaults apply once, and only on a fresh visit (nothing restored),
-  // so they never fight a filter the user has already customized.
-  const defaultsAppliedRef = useRef(loadSavedFilter() !== null);
 
   // Persist the filter so it survives reloads (single writer — no FilterBar race).
   useEffect(() => {
@@ -104,46 +114,9 @@ function App() {
     }
   }, [filter]);
 
-  useEffect(() => {
-    if (!metadata || defaultsAppliedRef.current) return;
-
-    const doneState = metadata.workflowStates.find((s) =>
-      s.name.toLowerCase().includes('done'),
-    );
-    const prState = metadata.workflowStates.find((s) =>
-      s.name.toLowerCase().includes('pull request'),
-    );
-    const excludeIds = [doneState?.id, prState?.id].filter(Boolean) as string[];
-
-    // Default active states: In Progress, Backlog, Todo (across all teams/projects)
-    const activeNames = ['in progress', 'backlog', 'todo', 'to-do'];
-    const activeIds = metadata.workflowStates
-      .filter((s) => activeNames.includes(s.name.toLowerCase()))
-      .map((s) => s.id);
-
-    const ticketLabel = metadata.labels.find(
-      (l) => l.name.toLowerCase() === 'ticket',
-    );
-
-    setFilter((prev) => ({
-      ...prev,
-      states:
-        prev.states.length > 0 ? prev.states : activeIds,
-      excludeStates:
-        prev.excludeStates.length > 0 ? prev.excludeStates : excludeIds,
-      labels:
-        prev.labels.length > 0
-          ? prev.labels
-          : ticketLabel
-            ? [ticketLabel.id]
-            : [],
-    }));
-    defaultsAppliedRef.current = true;
-  }, [metadata]);
-
-  // Client-side filter chain
+  // Client-side filter chain — manual FilterBar narrowing on top of the active team.
   const filteredIssues = useMemo(() => {
-    let result = issues;
+    let result = teamIssues;
 
     // Priority filter
     if (filter.priorities.length > 0) {
@@ -189,16 +162,16 @@ function App() {
     }
 
     return result;
-  }, [issues, filter]);
+  }, [teamIssues, filter]);
 
-  // Served-today shelf — computed from the UNFILTERED set (Done is excluded by the
-  // default state filter) so completions show regardless of the user's active-state filter.
+  // Served-today shelf — the active team's tickets completed today (independent of
+  // the manual FilterBar so completions always celebrate).
   const doneToday = useMemo(
     () =>
       issues
-        .filter((i) => i.state.type === 'completed' && hasTicketLabel(i) && isToday(i.completedAt))
+        .filter((i) => matchesTeam(i, activeTeam) && i.state.type === 'completed' && isToday(i.completedAt))
         .sort((a, b) => new Date(b.completedAt ?? 0).getTime() - new Date(a.completedAt ?? 0).getTime()),
-    [issues],
+    [issues, activeTeam?.id, activeTeam?.filter],
   );
 
   const handleSettingsApply = useCallback((overrides: SettingsOverrides) => {
@@ -230,17 +203,17 @@ function App() {
       }
     }
 
-    // Completed-today ticket ids (drives the "served" celebration sound)
+    // Completed-today ids for the active team (drives the "served" celebration sound)
     const servedNow = new Set(
       issues
-        .filter((i) => i.state.type === 'completed' && hasTicketLabel(i) && isToday(i.completedAt))
+        .filter((i) => matchesTeam(i, activeTeam) && i.state.type === 'completed' && isToday(i.completedAt))
         .map((i) => i.id),
     );
 
     if (prevIds.size > 0) {
-      // Arrival — any new ticket that lands in the untaken hero zone (once per batch)
+      // Arrival — any new board-worthy ticket that lands in the untaken hero zone (once per batch)
       const arrivals = issues.filter(
-        (i) => hasTicketLabel(i) && !prevIds.has(i.id) && zoneForIssue(i) === 'new',
+        (i) => matchesTeam(i, activeTeam) && !prevIds.has(i.id) && zoneForIssue(i) === 'new',
       );
       if (arrivals.length > 0) sound.playNewUrgent();
 
@@ -264,7 +237,7 @@ function App() {
     }
     servedIdsRef.current = servedNow;
     prevIssuesRef.current = currentIds;
-  }, [issues, loading, timers, sound]);
+  }, [issues, loading, timers, sound, activeTeam?.id, activeTeam?.filter]);
 
   const isFriday = new Date().getDay() === 5;
   const toggleReport = () => setShowReport((prev) => !prev);

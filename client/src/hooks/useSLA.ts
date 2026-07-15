@@ -21,13 +21,9 @@ export function useSLA(issues: Issue[], slas: SLAConfig[] | undefined) {
       const timers = new Map<string, TimerInfo>();
 
       for (const issue of issues) {
-        // Only show timer when the issue has the "ticket" label
-        const hasTicketLabel = issue.labels?.nodes?.some(
-          (l) => l.name === 'ticket',
-        ) ?? false;
-        if (!hasTicketLabel) continue;
-
-        // Anchor: labelTimestamps sent by the server → stored in assignedAt
+        // Issues are already scoped to the active team by the caller; the timer
+        // applies to all of them (the team's timer toggle gates this upstream).
+        // Anchor: label timestamp when present (assignedAt), else creation time.
         const anchor = issue.assignedAt ?? issue.createdAt;
         const timerInfo = computeTimerInfo(anchor, {
           id: timerConfig.id,

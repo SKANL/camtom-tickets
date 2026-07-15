@@ -34,18 +34,17 @@ describe('useSLA', () => {
     vi.useRealTimers();
   });
 
-  it('computes timer info only for issues with ticket label', () => {
+  it('computes timer info for every issue it receives (team-scoping is upstream)', () => {
     const issues: Issue[] = [
       makeIssue({ id: '1', priority: 1, labels: { nodes: [{ id: 'l1', name: 'ticket' }] } }),
-      makeIssue({ id: '2', priority: 2 }), // no ticket label
+      makeIssue({ id: '2', priority: 2 }), // no ticket label — still gets a timer now
     ];
 
     const { result } = renderHook(() => useSLA(issues, mockSLAConfig));
 
-    // Only issue with ticket label gets a timer
-    expect(result.current.size).toBe(1);
+    expect(result.current.size).toBe(2);
     expect(result.current.has('1')).toBe(true);
-    expect(result.current.has('2')).toBe(false);
+    expect(result.current.has('2')).toBe(true);
   });
 
   it('returns FRESH state for issues within SLA', () => {
@@ -102,14 +101,15 @@ describe('useSLA', () => {
     expect(secondTimer.remaining).toBeLessThan(firstRemaining);
   });
 
-  it('handles issues with no ticket label (no timer)', () => {
+  it('times an unlabelled issue too (anchor falls back to createdAt)', () => {
     const issues: Issue[] = [
-      makeIssue({ id: '1', priority: 0 }), // no label
+      makeIssue({ id: '1', priority: 0 }), // no label — anchor = createdAt
     ];
 
     const { result } = renderHook(() => useSLA(issues, mockSLAConfig));
 
-    expect(result.current.size).toBe(0);
+    expect(result.current.size).toBe(1);
+    expect(result.current.get('1')).toBeDefined();
   });
 
   it('returns empty map when no SLA config provided', () => {

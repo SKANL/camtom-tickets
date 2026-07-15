@@ -1,4 +1,4 @@
-import { Issue, TimerState } from '@camtom/shared';
+import { Issue, TimerState, TeamBoardConfig } from '@camtom/shared';
 
 /** The three board zones, ordered by prominence. */
 export type Zone = 'new' | 'active' | 'done' | 'hidden';
@@ -60,4 +60,24 @@ export function isToday(iso: string | undefined | null, now: number = Date.now()
 /** True when an issue carries the "ticket" label (the support tickets we time). */
 export function hasTicketLabel(issue: Issue): boolean {
   return issue.labels?.nodes?.some((l) => l.name === 'ticket') ?? false;
+}
+
+/**
+ * Whether an issue belongs on the board for the given team, applying that
+ * team's board-worthiness criterion. No team configured → show everything.
+ */
+export function matchesTeam(issue: Issue, team: TeamBoardConfig | undefined): boolean {
+  if (!team) return true;
+  if (issue.team?.id !== team.id) return false;
+  if (team.filter === 'ticket-label') return hasTicketLabel(issue);
+  return true; // 'active-states' → any issue of the team (zones handle done/canceled)
+}
+
+/** Resolve the active team from the dashboard config. */
+export function activeTeamOf(
+  teams: TeamBoardConfig[] | undefined,
+  activeTeamId: string | undefined,
+): TeamBoardConfig | undefined {
+  if (!teams || teams.length === 0) return undefined;
+  return teams.find((t) => t.id === activeTeamId) ?? teams[0];
 }

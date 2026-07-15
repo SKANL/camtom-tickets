@@ -6,6 +6,7 @@ export type {
   StateLabelConfig,
   KitchenPhrases,
   ZoneLabels,
+  TeamBoardConfig,
   DashboardConfig,
   ConfigResponse,
   TimerState,

@@ -52,6 +52,8 @@ interface RawDashboardFile {
     breachedTimer: string;
   };
   zoneLabels?: { new: string; active: string; done: string };
+  teams?: { id: string; name: string; filter: 'ticket-label' | 'active-states'; timer: boolean }[];
+  activeTeamId?: string;
   displayOptions?: {
     columnOrder?: number[];
     columnVisibility?: Record<number, boolean>;
@@ -120,6 +122,8 @@ export function loadConfig(): ConfigResponse {
       report: { ...defaults.report, ...(parsed.report ?? {}) },
       kitchenPhrases: { ...defaults.kitchenPhrases, ...(parsed.kitchenPhrases ?? {}) },
       zoneLabels: { ...defaults.zoneLabels, ...(parsed.zoneLabels ?? {}) } as DashboardConfig['zoneLabels'],
+      teams: parsed.teams ?? defaults.teams,
+      activeTeamId: parsed.activeTeamId ?? defaults.activeTeamId,
       displayOptions: parsed.displayOptions ?? undefined,
     };
   } catch (err: any) {
@@ -181,6 +185,11 @@ function getDefaultDashboardConfig(): DashboardConfig {
       active: 'En progreso',
       done: 'Servidos hoy',
     },
+    teams: [
+      { id: 'f25f5221-40c8-47ab-8071-8024b4564df0', name: 'Customs Advocacy', filter: 'active-states', timer: true },
+      { id: '7a3df8eb-2e31-4b69-9f92-b0c5d110e05e', name: 'Engineering', filter: 'ticket-label', timer: true },
+    ],
+    activeTeamId: 'f25f5221-40c8-47ab-8071-8024b4564df0',
   };
 }
 
