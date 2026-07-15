@@ -70,6 +70,7 @@ export interface TeamBoardConfig {
   name: string;
   filter: 'ticket-label' | 'active-states';
   timer: boolean; // whether the SLA countdown applies to this team
+  accent?: string; // hex accent colour used to signal the active team in the UI
 }
 
 export interface DashboardConfig {

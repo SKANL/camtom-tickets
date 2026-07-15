@@ -253,6 +253,7 @@ function App() {
         showReport={showReport}
         isFriday={isFriday}
         config={config}
+        activeTeam={activeTeam}
         onOpenSettings={() => setShowSettings(true)}
       />
       {error && (

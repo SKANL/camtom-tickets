@@ -64,10 +64,12 @@ teams:
     name: Customs Advocacy
     filter: active-states
     timer: true
+    accent: '#4CAF50'
   - id: 7a3df8eb-2e31-4b69-9f92-b0c5d110e05e
     name: Engineering
     filter: ticket-label
     timer: true
+    accent: '#FFD700'
 activeTeamId: f25f5221-40c8-47ab-8071-8024b4564df0
 teamMembers:
   - Román

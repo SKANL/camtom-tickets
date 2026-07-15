@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SoundToggle } from './SoundToggle';
 import { formatTime } from '../utils/format';
-import { ConfigResponse } from '@camtom/shared';
+import { ConfigResponse, TeamBoardConfig } from '@camtom/shared';
 import { IconChefHat, IconClipboard, IconChart, IconSettings } from './Icons';
 import { priorityIcons } from '../lib/priorities';
 
@@ -13,16 +13,21 @@ interface HeaderProps {
   showReport: boolean;
   isFriday: boolean;
   config?: ConfigResponse | null;
+  activeTeam?: TeamBoardConfig;
   onOpenSettings?: () => void;
 }
 
-export function Header({ title, isMuted, onToggleMute, onToggleReport, showReport, isFriday, config, onOpenSettings }: HeaderProps) {
+export function Header({ title, isMuted, onToggleMute, onToggleReport, showReport, isFriday, config, activeTeam, onOpenSettings }: HeaderProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Active-team accent — signals which board you're looking at. Falls back to the
+  // brand tomato when a team has no accent configured.
+  const teamAccent = activeTeam?.accent || 'var(--color-tomato)';
 
   return (
     <header
@@ -32,7 +37,7 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        borderBottom: '3px solid var(--color-tomato)',
+        borderBottom: `3px solid ${teamAccent}`,
         boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
         zIndex: 10,
         flexShrink: 0,
@@ -95,6 +100,40 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
             TABLERO · EN VIVO
           </p>
         </div>
+
+        {/* Active-team badge — colour + name make the current board unmistakable */}
+        {activeTeam && (
+          <span
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginLeft: 'var(--space-sm)',
+              padding: '5px 14px 5px 10px',
+              borderRadius: 'var(--radius-pill)',
+              background: `${teamAccent}1F`,
+              border: `1.5px solid ${teamAccent}66`,
+              fontFamily: 'var(--font-display)',
+              fontSize: 'var(--text-lg)',
+              letterSpacing: '0.04em',
+              color: '#fff',
+              textShadow: '1px 1px 0 rgba(0,0,0,0.35)',
+              transition: 'background 0.3s ease, border-color 0.3s ease',
+            }}
+          >
+            <span
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: '50%',
+                background: teamAccent,
+                boxShadow: `0 0 8px ${teamAccent}AA`,
+                flexShrink: 0,
+              }}
+            />
+            {activeTeam.name}
+          </span>
+        )}
       </div>
 
       <div
