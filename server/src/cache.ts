@@ -61,6 +61,5 @@ class Cache<T> {
   }
 }
 
-export const issuesCache = new Cache<any[]>(TTL_MS);
 export const metadataCache = new Cache<any>(5 * 60 * 1000); // 5 minute TTL
 export { Cache, TTL_MS };

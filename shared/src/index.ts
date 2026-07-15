@@ -7,7 +7,6 @@ export type {
   KitchenPhrases,
   DashboardConfig,
   ConfigResponse,
-  SSEDelta,
   TimerState,
   TimerInfo,
   SelectOption,

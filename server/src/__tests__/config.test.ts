@@ -2,15 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
-// Mock fs and js-yaml before importing config
+// Mock fs before importing config
 vi.mock('fs');
-vi.mock('chokidar', () => ({
-  default: {
-    watch: vi.fn(() => ({
-      on: vi.fn(),
-    })),
-  },
-}));
 
 describe('Config loading', () => {
   beforeEach(() => {

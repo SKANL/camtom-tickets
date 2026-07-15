@@ -99,28 +99,6 @@ button:focus-visible {
   border-color: rgba(255, 255, 255, 0.3);
 }
 
-/* Priority section divider */
-.priority-section {
-  position: relative;
-}
-
-.priority-section::after {
-  content: '';
-  position: absolute;
-  bottom: -8px;
-  left: var(--space-md);
-  right: var(--space-md);
-  height: 1px;
-  background: repeating-linear-gradient(
-    90deg,
-    currentColor,
-    currentColor 6px,
-    transparent 6px,
-    transparent 12px
-  );
-  opacity: 0.15;
-}
-
 /* Kitchen badge - ticket counter */
 .kitchen-badge {
   display: inline-flex;

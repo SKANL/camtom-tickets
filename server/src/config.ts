@@ -53,7 +53,6 @@ interface RawDashboardFile {
 }
 
 let cachedConfig: ConfigResponse | null = null;
-let watcherInitialized = false;
 
 function computeVersion(...contents: string[]): string {
   const hash = crypto.createHash('sha256');
@@ -62,8 +61,6 @@ function computeVersion(...contents: string[]): string {
   }
   return hash.digest('hex').slice(0, 12);
 }
-
-let chokidar: any = null;
 
 export function loadConfig(): ConfigResponse {
   const slaPath = path.join(CONFIG_DIR, 'sla.yaml');
@@ -168,37 +165,6 @@ function getDefaultDashboardConfig(): DashboardConfig {
       breachedTimer: 'Order BURNED!',
     },
   };
-}
-
-export function watchConfig(onChange: (config: ConfigResponse) => void): void {
-  if (watcherInitialized) return;
-  watcherInitialized = true;
-
-  try {
-    chokidar = require('chokidar');
-    const watcher = chokidar.watch(CONFIG_DIR, {
-      ignoreInitial: true,
-      awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
-    });
-
-    watcher.on('change', () => {
-      console.log('[config] Config file changed, reloading...');
-      try {
-        const config = loadConfig();
-        onChange(config);
-      } catch (err: any) {
-        console.error(`[config] Error reloading config: ${err.message}`);
-      }
-    });
-
-    watcher.on('error', (err: Error) => {
-      console.error(`[config] Watcher error: ${err.message}`);
-    });
-
-    console.log('[config] File watcher started for config/ directory');
-  } catch (err) {
-    console.warn('[config] chokidar not available, hot-reload disabled');
-  }
 }
 
 export function saveConfig(updates: {

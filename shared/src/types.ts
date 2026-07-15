@@ -70,14 +70,6 @@ export interface ConfigResponse {
   version: string;
 }
 
-export interface SSEDelta {
-  added?: Issue[];
-  updated?: Issue[];
-  removed?: string[];
-  serverTime: number;
-  labelTimestamps?: Record<string, string>;
-}
-
 export interface SelectOption {
   id: string;
   name: string;

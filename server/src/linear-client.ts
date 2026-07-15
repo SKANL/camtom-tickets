@@ -45,63 +45,6 @@ interface LinearIssueNode {
   estimate?: number;
 }
 
-const ISSUES_QUERY = `
-query Issues($teamId: ID!, $first: Int!, $after: String) {
-  issues(
-    filter: { team: { id: { eq: $teamId } } }
-    orderBy: updatedAt
-    first: $first
-    after: $after
-  ) {
-    nodes {
-      id
-      identifier
-      title
-      description
-      priority
-      priorityLabel
-      createdAt
-      updatedAt
-      dueDate
-      assignee {
-        id
-        name
-        email
-      }
-      state {
-        id
-        name
-        type
-      }
-      labels {
-        nodes {
-          id
-          name
-          color
-        }
-      }
-      project {
-        id
-        name
-      }
-      team {
-        id
-        name
-      }
-      cycle {
-        id
-        name
-      }
-      estimate
-    }
-    pageInfo {
-      hasNextPage
-      endCursor
-    }
-  }
-}
-`;
-
 function getApiKey(): string {
   const key = process.env.LINEAR_API_KEY;
   if (!key) {
@@ -228,10 +171,6 @@ function mapIssue(node: LinearIssueNode): Issue {
     cycle: node.cycle ?? null,
     estimate: node.estimate ?? undefined,
   };
-}
-
-export async function fetchAllIssues(): Promise<Issue[]> {
-  return fetchIssuesSince(null);
 }
 
 /**
@@ -445,12 +384,6 @@ export function getRateLimitState(): RateLimitState {
   return { ...rateLimitState };
 }
 
-/** Check if we're running low on quota and should back off. */
-export function isRateLimitLow(thresholdPct: number = 0.1): boolean {
-  if (rateLimitState.remaining <= 0) return true;
-  return rateLimitState.remaining / rateLimitState.limit < thresholdPct;
-}
-
 // ---- Webhook Management ----
 
 const WEBHOOKS_QUERY = `
@@ -465,13 +398,6 @@ mutation WebhookCreate($url: String!, $resourceTypes: [String!]!) {
   webhookCreate(input: { url: $url, allPublicTeams: true, resourceTypes: $resourceTypes }) {
     success
     webhook { id url enabled }
-  }
-}`;
-
-const WEBHOOK_DELETE_MUTATION = `
-mutation WebhookDelete($id: String!) {
-  webhookDelete(id: $id) {
-    success
   }
 }`;
 
@@ -518,12 +444,4 @@ export async function registerWebhook(url: string): Promise<boolean> {
 
   console.error('[linear-client] Failed to register webhook');
   return false;
-}
-
-/**
- * Delete a webhook by ID.
- */
-export async function deleteWebhook(id: string): Promise<boolean> {
-  const data = await executeGraphQL(WEBHOOK_DELETE_MUTATION, { id });
-  return data.webhookDelete.success === true;
 }

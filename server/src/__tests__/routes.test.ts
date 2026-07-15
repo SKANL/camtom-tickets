@@ -38,7 +38,6 @@ vi.mock('../config', () => ({
     dashboard: { pollingInterval: 30000, title: 'Test Dashboard' },
     version: 'abc123',
   })),
-  watchConfig: vi.fn(),
 }));
 
 const { app } = await import('../index');
