@@ -10,6 +10,7 @@ import { DisplayTab } from './settings/DisplayTab';
 import { SlaTab } from './settings/SlaTab';
 import { LabelsTab } from './settings/LabelsTab';
 import { SoundsTab } from './settings/SoundsTab';
+import { ConfigAdminError, readAdminToken, storeAdminToken, updateServerConfig } from '../lib/config-admin';
 
 const SETTINGS_STORAGE_KEY = 'camtom-settings-overrides';
 
@@ -65,6 +66,7 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
   const [activeTab, setActiveTab] = useState<TabId>('general');
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [adminToken, setAdminToken] = useState(readAdminToken);
 
   // Sound preview state
   const [previewVolume, setPreviewVolume] = useState(0.5);
@@ -256,6 +258,10 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
 
   // Save to server
   const handleSaveToServer = async () => {
+    if (!adminToken.trim()) {
+      setSaveStatus('Error: Ingresá la clave de administración');
+      return;
+    }
     setSaving(true);
     setSaveStatus(null);
     try {
@@ -305,20 +311,12 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
         body.slas = slaRules;
       }
 
-      const res = await fetch('/api/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
+      await updateServerConfig(body, adminToken);
 
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus(null), 3000);
     } catch (err: any) {
+      if (err instanceof ConfigAdminError && err.status === 401) setAdminToken('');
       setSaveStatus(`Error: ${err.message}`);
     } finally {
       setSaving(false);
@@ -520,6 +518,45 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
               handlePreviewSound={handlePreviewSound}
             />
           )}
+        </div>
+
+        <div
+          style={{
+            padding: 'var(--space-sm) var(--space-xl)',
+            borderTop: '1px solid rgba(255,255,255,0.08)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <label htmlFor="config-admin-token" style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.65)' }}>
+            Clave de administración
+          </label>
+          <input
+            id="config-admin-token"
+            type="password"
+            autoComplete="current-password"
+            value={adminToken}
+            onChange={(event) => {
+              const value = event.target.value;
+              setAdminToken(value);
+              storeAdminToken(value);
+            }}
+            placeholder="Necesaria para guardar en servidor"
+            style={{
+              flex: '1 1 240px',
+              minHeight: 44,
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              background: 'rgba(0,0,0,0.25)',
+              color: 'var(--color-mayo)',
+              padding: '8px 12px',
+            }}
+          />
+          <span style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.4)' }}>
+            Se conserva sólo durante esta sesión.
+          </span>
         </div>
 
         {/* Footer actions */}

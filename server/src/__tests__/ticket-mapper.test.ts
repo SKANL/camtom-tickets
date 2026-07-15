@@ -31,4 +31,16 @@ describe('issueToRow', () => {
     expect(row.description).toBeNull();
     expect(row.estimate).toBeNull();
   });
+
+  it('redacts description and assignee email before persistence', () => {
+    const row = issueToRow({
+      ...base,
+      description: 'Customer passport number',
+      assignee: { id: 'u1', name: 'Ada', email: 'ada@example.com' },
+    });
+
+    expect(row.description).toBeNull();
+    expect(row.assignee).toEqual({ id: 'u1', name: 'Ada' });
+    expect(row.assignee).not.toHaveProperty('email');
+  });
 });
