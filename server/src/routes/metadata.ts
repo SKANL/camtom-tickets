@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { metadataCache } from '../cache';
+import { getMetadataCache, setMetadataCache } from '../supabase';
 import {
   fetchTeams,
   fetchProjects,
@@ -10,6 +11,9 @@ import {
 } from '../linear-client';
 
 const router: Router = Router();
+
+/** L2 (Supabase) cache TTL — survives cold starts to avoid re-querying Linear. */
+const DB_TTL_MS = 6 * 60 * 60 * 1000;
 
 interface MetadataResponse {
   teams: { id: string; name: string }[];
@@ -23,7 +27,7 @@ interface MetadataResponse {
 
 router.get('/api/metadata', async (_req: Request, res: Response) => {
   try {
-    // Check cache first
+    // L1: in-memory cache (fastest, wiped on cold start)
     const cached = metadataCache.get('catalog');
     if (cached) {
       res.json({
@@ -31,6 +35,18 @@ router.get('/api/metadata', async (_req: Request, res: Response) => {
         cached: true,
       });
       return;
+    }
+
+    // L2: Supabase-backed cache (survives cold starts)
+    try {
+      const l2 = await getMetadataCache();
+      if (l2 && Date.now() - new Date(l2.updatedAt).getTime() < DB_TTL_MS) {
+        metadataCache.set('catalog', l2.catalog);
+        res.json({ ...l2.catalog, cached: true });
+        return;
+      }
+    } catch (err: any) {
+      console.warn('[metadata] L2 read failed, falling back to Linear:', err.message);
     }
 
     // Run all 6 queries in parallel with individual error handling
@@ -67,8 +83,13 @@ router.get('/api/metadata', async (_req: Request, res: Response) => {
       console.warn('[metadata] Partial fetch errors:', errors);
     }
 
-    // Cache the full result
+    // Cache the full result (L1)
     metadataCache.set('catalog', response);
+
+    // Persist to L2 (best-effort) — skip on partial failures so we don't poison the cache.
+    if (!response.errors) {
+      setMetadataCache(response).catch((e) => console.warn('[metadata] L2 persist failed:', e.message));
+    }
 
     res.json({
       ...response,

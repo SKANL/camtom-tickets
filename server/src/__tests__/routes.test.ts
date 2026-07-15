@@ -17,27 +17,31 @@ vi.mock('../supabase', () => ({
   deleteTicket: vi.fn(() => Promise.resolve()),
   getLastSync: vi.fn(() => Promise.resolve(null)),
   setLastSync: vi.fn(() => Promise.resolve()),
+  getAppConfig: vi.fn(() => Promise.resolve(null)),
+  setAppConfig: vi.fn(() => Promise.resolve()),
+  getMetadataCache: vi.fn(() => Promise.resolve(null)),
+  setMetadataCache: vi.fn(() => Promise.resolve()),
 }));
 
+const mockConfig = {
+  slas: [
+    {
+      id: 'test_sla',
+      label: 'Test SLA',
+      applicablePriorities: [1],
+      maxMinutes: 5,
+      warningThresholds: { warming: 0.6, heating: 0.3, critical: 0.1 },
+    },
+  ],
+  dashboard: { pollingInterval: 30000, title: 'Test Dashboard' },
+  version: 'abc123',
+};
+
 vi.mock('../config', () => ({
-  loadConfig: vi.fn(() => ({
-    slas: [
-      {
-        id: 'test_sla',
-        label: 'Test SLA',
-        applicablePriorities: [1],
-        maxMinutes: 5,
-        warningThresholds: { warming: 0.6, heating: 0.3, critical: 0.1 },
-      },
-    ],
-    dashboard: { pollingInterval: 30000, title: 'Test Dashboard' },
-    version: 'abc123',
-  })),
-  getConfig: vi.fn(() => ({
-    slas: [{ id: 'test_sla', label: 'Test SLA', applicablePriorities: [1], maxMinutes: 5, warningThresholds: { warming: 0.6, heating: 0.3, critical: 0.1 } }],
-    dashboard: { pollingInterval: 30000, title: 'Test Dashboard' },
-    version: 'abc123',
-  })),
+  loadConfig: vi.fn(() => mockConfig),
+  getConfig: vi.fn(() => mockConfig),
+  ensureConfig: vi.fn(() => Promise.resolve(mockConfig)),
+  saveConfig: vi.fn(() => Promise.resolve(mockConfig)),
 }));
 
 const { app } = await import('../index');

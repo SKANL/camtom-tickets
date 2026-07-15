@@ -1,16 +1,15 @@
 import { Router, Request, Response } from 'express';
-import { getConfig, saveConfig } from '../config';
+import { ensureConfig, saveConfig } from '../config';
 import { metadataCache } from '../cache';
 import { DashboardConfig, SLAConfig } from '@camtom/shared';
 
 const router: Router = Router();
 
-router.get('/api/config', (_req: Request, res: Response) => {
-  const config = getConfig();
-  res.json(config);
+router.get('/api/config', async (_req: Request, res: Response) => {
+  res.json(await ensureConfig());
 });
 
-router.put('/api/config', (req: Request, res: Response) => {
+router.put('/api/config', async (req: Request, res: Response) => {
   try {
     const body = req.body as {
       dashboard?: Partial<DashboardConfig>;
@@ -18,7 +17,7 @@ router.put('/api/config', (req: Request, res: Response) => {
     };
     // Invalidate metadata cache so next request picks up fresh data
     metadataCache.delete('catalog');
-    const updated = saveConfig(body);
+    const updated = await saveConfig(body);
     res.json(updated);
   } catch (err: any) {
     console.error('[config] PUT /api/config error:', err.message);

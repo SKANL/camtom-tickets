@@ -9,7 +9,7 @@ if (!process.env.VERCEL) {
 
 import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
-import { loadConfig } from './config';
+import { loadConfig, ensureConfig } from './config';
 import { getRateLimitState } from './linear-client';
 import configRouter from './routes/config';
 import metadataRouter from './routes/metadata';
@@ -60,4 +60,5 @@ export function createApp(): Application {
 export function initServer(): void {
   const config = loadConfig();
   console.log(`[server] Config loaded: ${config.slas.length} SLAs, version ${config.version}`);
+  ensureConfig().catch((e) => console.warn('[server] config hydrate on init failed:', e.message));
 }

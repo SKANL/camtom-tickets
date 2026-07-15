@@ -45,3 +45,39 @@ export async function setLastSync(iso: string): Promise<void> {
     .eq('id', 1);
   if (error) throw new Error(`setLastSync failed: ${error.message}`);
 }
+
+export async function getAppConfig(): Promise<{ dashboard: any; sla: any } | null> {
+  const { data, error } = await getSupabaseAdmin()
+    .from('app_config')
+    .select('dashboard, sla')
+    .eq('id', 1)
+    .maybeSingle();
+  if (error) throw new Error(`getAppConfig failed: ${error.message}`);
+  if (!data) return null;
+  return { dashboard: data.dashboard, sla: data.sla };
+}
+
+export async function setAppConfig(dashboard: any, sla: any): Promise<void> {
+  const { error } = await getSupabaseAdmin()
+    .from('app_config')
+    .upsert({ id: 1, dashboard, sla, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+  if (error) throw new Error(`setAppConfig failed: ${error.message}`);
+}
+
+export async function getMetadataCache(): Promise<{ catalog: any; updatedAt: string } | null> {
+  const { data, error } = await getSupabaseAdmin()
+    .from('metadata_cache')
+    .select('catalog, updated_at')
+    .eq('id', 1)
+    .maybeSingle();
+  if (error) throw new Error(`getMetadataCache failed: ${error.message}`);
+  if (!data) return null;
+  return { catalog: data.catalog, updatedAt: data.updated_at };
+}
+
+export async function setMetadataCache(catalog: any): Promise<void> {
+  const { error } = await getSupabaseAdmin()
+    .from('metadata_cache')
+    .upsert({ id: 1, catalog, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+  if (error) throw new Error(`setMetadataCache failed: ${error.message}`);
+}

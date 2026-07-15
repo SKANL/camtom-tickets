@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import * as crypto from 'crypto';
 import { SLAConfig, DashboardConfig, ConfigResponse } from '@camtom/shared';
+import { getAppConfig, setAppConfig } from './supabase';
 
 function getConfigDir(): string {
   // Allow override via env var (useful for Vercel / custom deployments)
@@ -63,6 +64,7 @@ interface RawDashboardFile {
 }
 
 let cachedConfig: ConfigResponse | null = null;
+let hydrated = false;
 
 function computeVersion(...contents: string[]): string {
   const hash = crypto.createHash('sha256');
@@ -193,15 +195,42 @@ function getDefaultDashboardConfig(): DashboardConfig {
   };
 }
 
-export function saveConfig(updates: {
+/**
+ * Async accessor: ensures the YAML base is loaded, then overlays any
+ * Supabase-stored config on top (once per process). Falls back to YAML on DB error.
+ */
+export async function ensureConfig(): Promise<ConfigResponse> {
+  if (!cachedConfig) {
+    loadConfig();
+  }
+  if (!hydrated) {
+    try {
+      const row = await getAppConfig();
+      if (row) {
+        cachedConfig = {
+          version: computeVersion(JSON.stringify(row.sla), JSON.stringify(row.dashboard)),
+          slas: row.sla,
+          dashboard: row.dashboard,
+        };
+      }
+    } catch (err: any) {
+      console.warn(`[config] DB hydrate failed, using YAML defaults: ${err.message}`);
+    } finally {
+      hydrated = true;
+    }
+  }
+  return cachedConfig!;
+}
+
+export async function saveConfig(updates: {
   dashboard?: Partial<DashboardConfig>;
   slas?: SLAConfig[];
-}): ConfigResponse {
-  const current = getConfig();
+}): Promise<ConfigResponse> {
+  const current = await ensureConfig();
 
-  // Merge dashboard updates
+  let mergedDashboard: DashboardConfig = current.dashboard;
   if (updates.dashboard) {
-    const mergedDashboard: DashboardConfig = {
+    mergedDashboard = {
       ...current.dashboard,
       ...updates.dashboard,
       displayOptions: updates.dashboard.displayOptions ?? current.dashboard.displayOptions,
@@ -222,38 +251,18 @@ export function saveConfig(updates: {
         ...(updates.dashboard.kitchenPhrases ?? {}),
       },
     };
-
-    // Write dashboard.yaml
-    const dashPath = path.join(CONFIG_DIR, 'dashboard.yaml');
-    const dashYaml = yaml.dump(mergedDashboard, {
-      indent: 2,
-      lineWidth: 120,
-      noRefs: true,
-      sortKeys: true,
-    });
-    fs.writeFileSync(dashPath, dashYaml, 'utf-8');
-    current.dashboard = mergedDashboard;
   }
 
-  // Merge SLA updates
-  if (updates.slas) {
-    const slaPath = path.join(CONFIG_DIR, 'sla.yaml');
-    const slaYaml = yaml.dump({ slas: updates.slas }, {
-      indent: 2,
-      lineWidth: 120,
-      noRefs: true,
-      sortKeys: true,
-    });
-    fs.writeFileSync(slaPath, slaYaml, 'utf-8');
-    current.slas = updates.slas;
-  }
+  const mergedSlas = updates.slas ?? current.slas;
 
-  // Recompute version
-  const slaContent = fs.readFileSync(path.join(CONFIG_DIR, 'sla.yaml'), 'utf-8');
-  const dashContent = fs.readFileSync(path.join(CONFIG_DIR, 'dashboard.yaml'), 'utf-8');
-  current.version = computeVersion(slaContent, dashContent);
+  // Persist to Supabase (read-only FS on Vercel; let errors propagate to the PUT handler).
+  await setAppConfig(mergedDashboard, mergedSlas);
 
+  current.dashboard = mergedDashboard;
+  current.slas = mergedSlas;
+  current.version = computeVersion(JSON.stringify(mergedSlas), JSON.stringify(mergedDashboard));
   cachedConfig = current;
+  hydrated = true;
   console.log(`[config] Config saved: version ${current.version}`);
   return current;
 }
