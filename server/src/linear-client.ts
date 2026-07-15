@@ -35,6 +35,7 @@ interface LinearIssueNode {
   priorityLabel: string;
   createdAt: string;
   updatedAt: string;
+  completedAt?: string | null;
   dueDate?: string;
   assignee?: { id: string; name: string; email?: string } | null;
   state: { id: string; name: string; type: string };
@@ -156,6 +157,7 @@ function mapIssue(node: LinearIssueNode): Issue {
     priorityLabel: node.priorityLabel,
     createdAt: node.createdAt,
     updatedAt: node.updatedAt,
+    completedAt: node.completedAt ?? undefined,
     dueDate: node.dueDate ?? undefined,
     assignee: node.assignee
       ? { id: node.assignee.id, name: node.assignee.name, email: node.assignee.email }
@@ -203,6 +205,7 @@ export async function fetchIssuesSince(since: string | null): Promise<Issue[]> {
         priorityLabel
         createdAt
         updatedAt
+        completedAt
         dueDate
         assignee { id name email }
         state { id name type }

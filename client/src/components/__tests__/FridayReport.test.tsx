@@ -75,6 +75,24 @@ describe('FridayReport', () => {
     expect(screen.getByText('Unassigned')).toBeDefined();
   });
 
+  it('uses completedAt, not updatedAt, for the weekly window', () => {
+    // Completed a month ago but edited just now: updatedAt would wrongly pull it
+    // into this week's report — completedAt must keep it out.
+    const issues: Issue[] = [
+      makeIssue({
+        id: '1',
+        priority: 1,
+        state: { id: 's2', name: 'Done', type: 'completed' },
+        completedAt: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
+        updatedAt: new Date().toISOString(),
+      }),
+    ];
+
+    render(<FridayReport issues={issues} playSuccess={vi.fn()} config={null} />);
+    // Nothing resolved this week -> both computed metrics show N/A (as in the empty case)
+    expect(screen.getAllByText('N/A')).toHaveLength(2);
+  });
+
   it('shows correct SLA rate for completed issues', () => {
     // All completed within SLA time (created 1h ago, SLA 5min — still OK)
     const issues: Issue[] = [

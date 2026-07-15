@@ -22,14 +22,15 @@ export function FridayReport({ issues, playSuccess, config }: FridayReportProps)
   }, [playSuccess]);
 
   const { metrics, teamStats } = useMemo(() => {
-    // Consider issues in "completed" state as resolved
+    // Consider issues in "completed" state as resolved. Use the real completedAt
+    // timestamp (falling back to updatedAt only if Linear never sent one) — updatedAt
+    // bumps on any edit, so it would misdate resolutions and inflate resolution time.
+    const resolvedAt = (i: Issue) => new Date(i.completedAt ?? i.updatedAt).getTime();
     const resolvedIssues = issues.filter((i) => i.state.type === 'completed');
 
     // Calculate weekly date range (last 7 days)
     const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const weeklyResolved = resolvedIssues.filter(
-      (i) => new Date(i.updatedAt).getTime() > oneWeekAgo,
-    );
+    const weeklyResolved = resolvedIssues.filter((i) => resolvedAt(i) > oneWeekAgo);
 
     // Priority breakdown of weekly resolved
     const priorityBreakdown = {
@@ -56,8 +57,7 @@ export function FridayReport({ issues, playSuccess, config }: FridayReportProps)
 
     for (const issue of weeklyResolved) {
       const created = new Date(issue.createdAt).getTime();
-      const updated = new Date(issue.updatedAt).getTime();
-      const resolutionTime = Math.max(0, updated - created);
+      const resolutionTime = Math.max(0, resolvedAt(issue) - created);
       const isCompliant = resolutionTime <= SLA_WINDOW_MS;
 
       if (isCompliant) slaCompliant++;

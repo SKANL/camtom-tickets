@@ -13,6 +13,7 @@ export interface TicketRow {
   priority_label: string;
   created_at: string;
   updated_at: string;
+  completed_at: string | null;
   assigned_at: string | null;
   due_date: string | null;
   assignee: { id: string; name: string; email?: string } | null;
@@ -35,6 +36,7 @@ export function rowToIssue(row: TicketRow): Issue {
     priorityLabel: row.priority_label,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    completedAt: row.completed_at ?? undefined,
     assignedAt: row.assigned_at ?? undefined,
     dueDate: row.due_date ?? undefined,
     assignee: row.assignee ?? null,

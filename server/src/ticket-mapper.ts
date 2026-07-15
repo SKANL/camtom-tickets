@@ -20,6 +20,7 @@ export function issueToRow(issue: Issue): TicketRow {
     priority_label: issue.priorityLabel,
     created_at: issue.createdAt,
     updated_at: issue.updatedAt,
+    completed_at: issue.completedAt ?? null,
     assigned_at: hasLabel ? issue.updatedAt : null,
     due_date: issue.dueDate ?? null,
     assignee: issue.assignee ?? null,

@@ -7,6 +7,7 @@ export interface Issue {
   priorityLabel: string;
   createdAt: string;
   updatedAt: string;
+  completedAt?: string;
   assignedAt?: string;
   dueDate?: string;
   assignee?: { id: string; name: string; email?: string } | null;

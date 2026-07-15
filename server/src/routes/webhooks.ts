@@ -44,6 +44,7 @@ function dataToIssue(d: any): Issue {
     priorityLabel: d.priorityLabel ?? '',
     createdAt: d.createdAt ?? new Date().toISOString(),
     updatedAt: d.updatedAt ?? new Date().toISOString(),
+    completedAt: d.completedAt ?? undefined,
     dueDate: d.dueDate ?? undefined,
     assignee: d.assignee
       ? { id: d.assignee.id, name: d.assignee.name, email: d.assignee.email }
