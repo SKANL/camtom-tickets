@@ -1,0 +1,93 @@
+import React from 'react';
+import type { SettingsOverrides } from '../SettingsPanel';
+import { Section, FieldRow, inputStyle } from './layout';
+import { Button } from '../ui/Button';
+
+interface GeneralTabProps {
+  title: string;
+  slaWindowHours: number;
+  teamMembers: string[];
+  newMemberName: string;
+  setNewMemberName: (value: string) => void;
+  addTeamMember: (name: string) => void;
+  removeTeamMember: (index: number) => void;
+  setOverride: <K extends keyof SettingsOverrides>(key: K, value: SettingsOverrides[K]) => void;
+}
+
+export function GeneralTab({
+  title,
+  slaWindowHours,
+  teamMembers,
+  newMemberName,
+  setNewMemberName,
+  addTeamMember,
+  removeTeamMember,
+  setOverride,
+}: GeneralTabProps) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
+      <Section label="General">
+        <FieldRow label="Dashboard Title">
+          <input
+            value={title}
+            onChange={(e) => setOverride('title', e.target.value)}
+            style={inputStyle}
+          />
+        </FieldRow>
+        <FieldRow label="SLA Window (hours)">
+          <input
+            type="number"
+            min={1}
+            max={168}
+            value={slaWindowHours}
+            onChange={(e) => setOverride('slaWindowHours', Number(e.target.value))}
+            style={{ ...inputStyle, width: 80 }}
+          />
+        </FieldRow>
+      </Section>
+
+      <Section label="Team Members">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {teamMembers.map((name, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ flex: 1, fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--color-mayo)' }}>{name}</span>
+              <Button
+                variant="danger"
+                onClick={() => removeTeamMember(i)}
+                style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-display)' }}
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <input
+              placeholder="Add team member..."
+              value={newMemberName}
+              onChange={(e) => setNewMemberName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newMemberName.trim()) {
+                  addTeamMember(newMemberName);
+                  setNewMemberName('');
+                }
+              }}
+              style={{ ...inputStyle, flex: 1 }}
+            />
+            <Button
+              variant="primary"
+              onClick={() => {
+                if (newMemberName.trim()) {
+                  addTeamMember(newMemberName);
+                  setNewMemberName('');
+                }
+              }}
+              style={{ padding: '4px 16px', fontSize: 'var(--text-sm)', letterSpacing: '0.05em' }}
+            >
+              Add
+            </Button>
+          </div>
+        </div>
+      </Section>
+    </div>
+  );
+}
