@@ -5,6 +5,7 @@ dist/
 *.log
 .DS_Store
 .atl/
+.codegraph/
 .vercel/
 
 .vercel

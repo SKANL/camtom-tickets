@@ -9,6 +9,7 @@ interface SoundToggleProps {
 export function SoundToggle({ isMuted, onToggle }: SoundToggleProps) {
   return (
     <button
+      className="sound-toggle"
       onClick={onToggle}
       title={isMuted ? 'Activar sonidos' : 'Silenciar sonidos'}
       aria-label={isMuted ? 'Activar sonidos' : 'Silenciar sonidos'}
@@ -25,6 +26,7 @@ export function SoundToggle({ isMuted, onToggle }: SoundToggleProps) {
         fontFamily: 'var(--font-body)',
         fontSize: 'var(--text-sm)',
         transition: 'all 0.2s ease',
+        minHeight: 44,
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.background = 'rgba(255,255,255,0.2)';
@@ -34,7 +36,7 @@ export function SoundToggle({ isMuted, onToggle }: SoundToggleProps) {
       }}
     >
       {isMuted ? <IconVolumeMute size={20} /> : <IconVolume size={20} />}
-      <span>{isMuted ? 'Silenciado' : 'Sonido'}</span>
+      <span className="control-label">{isMuted ? 'Silenciado' : 'Sonido'}</span>
     </button>
   );
 }

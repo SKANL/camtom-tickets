@@ -31,6 +31,7 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
 
   return (
     <header
+      className="app-header"
       style={{
         background: 'linear-gradient(180deg, var(--bg-header) 0%, #2C1810 100%)',
         padding: 'var(--space-md) var(--space-xl)',
@@ -57,7 +58,7 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
       />
 
       {/* Left: Branding */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+      <div className="header-brand" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)', minWidth: 0 }}>
         <div
           style={{
             width: 44,
@@ -76,6 +77,7 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
         </div>
         <div>
           <h1
+            className="header-title"
             style={{
               fontFamily: 'var(--font-display)',
               fontSize: 'var(--text-3xl)',
@@ -104,6 +106,7 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
         {/* Active-team badge — colour + name make the current board unmistakable */}
         {activeTeam && (
           <span
+            className="header-team-badge"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -137,6 +140,7 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
       </div>
 
       <div
+        className="header-priorities"
         style={{
           display: 'flex',
           gap: 'var(--space-xl)',
@@ -156,10 +160,11 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
       </div>
 
       {/* Right: Time, Report toggle, Sound */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+      <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
         {/* Friday indicator */}
         {isFriday && !showReport && (
           <span
+            className="header-friday"
             style={{
               fontSize: 'var(--text-sm)',
               color: 'var(--color-mustard)',
@@ -173,6 +178,7 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
 
         {/* Toggle report button */}
         <button
+          className="header-report-button"
           data-cuelume-press="toggle"
           onClick={onToggleReport}
           style={{
@@ -187,6 +193,7 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
             letterSpacing: '0.05em',
             transition: 'all 0.2s ease',
             textShadow: '1px 1px 0 rgba(0,0,0,0.3)',
+            minHeight: 44,
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = showReport ? 'var(--color-avocado)' : 'rgba(255,255,255,0.15)';
@@ -195,11 +202,16 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
             e.currentTarget.style.background = showReport ? 'var(--color-avocado)' : 'rgba(255,255,255,0.08)';
           }}
         >
-          {showReport ? <><IconClipboard size={16} /> Tablero</> : <><IconChart size={16} /> Reporte</>}
+          {showReport ? (
+            <><IconClipboard size={16} /><span className="control-label">Tablero</span></>
+          ) : (
+            <><IconChart size={16} /><span className="control-label">Reporte</span></>
+          )}
         </button>
 
         {/* Current time — styled like a kitchen clock, less competing orange */}
         <div
+          className="header-clock"
           style={{
             fontFamily: 'var(--font-display)',
             fontSize: 'var(--text-2xl)',
@@ -219,6 +231,7 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
         {/* Settings */}
         {onOpenSettings && (
           <button
+            className="header-settings-button"
             data-cuelume-press="toggle"
             onClick={onOpenSettings}
             title="Configuración"
@@ -226,8 +239,8 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
               background: 'rgba(255,255,255,0.06)',
               border: '1px solid rgba(255,255,255,0.1)',
               borderRadius: 'var(--radius-pill)',
-              width: 40,
-              height: 40,
+              width: 44,
+              height: 44,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',

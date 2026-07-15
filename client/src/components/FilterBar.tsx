@@ -59,6 +59,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
 
   return (
     <div
+      className="filter-bar"
       style={{
         background: 'rgba(0,0,0,0.3)',
         borderBottom: '1px solid rgba(255,255,255,0.08)',
@@ -72,6 +73,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
     >
       {/* Collapse toggle */}
       <button
+        className="touch-target"
         onClick={() => setCollapsed((c) => !c)}
         style={{
           background: collapsed && activeCount > 0 ? 'var(--color-tomato)' : 'rgba(255,255,255,0.08)',
@@ -86,6 +88,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
           display: 'flex',
           alignItems: 'center',
           gap: 6,
+          minHeight: 44,
         }}
       >
         Filtros
@@ -115,6 +118,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
             <IconSearch size={14} style={{ position: 'absolute', left: 8, color: 'rgba(255,255,255,0.3)' }} />
             <input
+              className="touch-target"
               placeholder="Buscar tickets..."
               value={filter.textSearch}
               onChange={(e) => setFilter('textSearch', e.target.value)}
@@ -129,6 +133,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
                 fontSize: 'var(--text-xs)',
                 width: 150,
                 outline: 'none',
+                minHeight: 44,
               }}
             />
           </div>
@@ -187,6 +192,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
           {/* Clear all */}
           {activeCount > 0 && (
             <button
+              className="touch-target"
               onClick={clearAll}
               title="Limpiar todos los filtros"
               style={{
@@ -202,6 +208,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
                 fontFamily: 'var(--font-body)',
                 fontSize: 'var(--text-xs)',
                 transition: 'all 0.15s ease',
+                minHeight: 44,
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = '#fff'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
@@ -233,6 +240,7 @@ function FilterSelect({ label, options, selected, onChange, disabled, stringIds 
   return (
     <div style={{ position: 'relative' }}>
       <button
+        className="touch-target"
         onClick={() => !disabled && setOpen((o) => !o)}
         disabled={disabled}
         style={{
@@ -249,6 +257,7 @@ function FilterSelect({ label, options, selected, onChange, disabled, stringIds 
           display: 'flex',
           alignItems: 'center',
           gap: 6,
+          minHeight: 44,
         }}
       >
         {label}
@@ -316,6 +325,7 @@ function FilterSelect({ label, options, selected, onChange, disabled, stringIds 
                   }}
                   style={{
                     padding: '6px 10px',
+                    minHeight: 44,
                     cursor: 'pointer',
                     borderRadius: 4,
                     display: 'flex',

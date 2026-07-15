@@ -49,11 +49,31 @@ describe('useConfig', () => {
 
     const { result } = renderHook(() => useConfig());
 
+    // Cache hydration is synchronous, so team filters can be resolved before tickets paint.
+    expect(result.current.config).toEqual(mockConfig);
+    expect(result.current.loading).toBe(false);
+
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     // Should have hit cache, but still fetched for version check
     expect(result.current.config).toEqual(mockConfig);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('hydrates stale cached config while refreshing in the background', async () => {
+    localStorage.setItem('camtom-config-cache', JSON.stringify({
+      version: mockConfig.version,
+      data: { slas: mockConfig.slas, dashboard: mockConfig.dashboard },
+      cachedAt: Date.now() - 60 * 60 * 1000,
+    }));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => mockConfig } as Response);
+
+    const { result } = renderHook(() => useConfig());
+
+    expect(result.current.config).toEqual(mockConfig);
+    expect(result.current.loading).toBe(false);
+    await waitFor(() => expect(result.current.refreshing).toBe(false));
+    expect(result.current.config).toEqual(mockConfig);
   });
 
   it('refetches when cached version differs from server', async () => {

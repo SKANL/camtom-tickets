@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Issue, TimerInfo, ConfigResponse, TimerState } from '@camtom/shared';
 import { SLATimer } from './SLATimer';
 import { IconPerson, resolveIcon } from './Icons';
@@ -47,24 +47,12 @@ export function TicketCard({ issue, timer, config, variant = 'hero' }: TicketCar
   const stateType = stateLabels[issue.state.type] || { label: issue.state.name, icon: 'clipboard' };
   const [rotation] = useState(() => (compact ? 0 : hashRotation(issue.id)));
   const [isNew, setIsNew] = useState(true);
-  const [hasArrived, setHasArrived] = useState(false);
-  const mountedRef = useRef(false);
 
-  // Arrival animation — fires once on mount
+  // The arrival class is present on the first paint, so it never flashes visible → hidden.
   useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      const t = setTimeout(() => setHasArrived(true), 50);
-      return () => clearTimeout(t);
-    }
+    const t = setTimeout(() => setIsNew(false), 2500);
+    return () => clearTimeout(t);
   }, []);
-
-  useEffect(() => {
-    if (hasArrived) {
-      const t = setTimeout(() => setIsNew(false), 2500);
-      return () => clearTimeout(t);
-    }
-  }, [hasArrived]);
 
   const timerState = timer?.state;
   const expired = timerState === 'EXPIRED';
@@ -79,7 +67,7 @@ export function TicketCard({ issue, timer, config, variant = 'hero' }: TicketCar
 
   const classes = ['ticket-card', compact ? 'ticket-card-compact' : 'ticket-card-hero'];
   if (expired && animationIntensity !== 'off') classes.push('siren-flash');
-  if (hasArrived && isNew && animationIntensity !== 'off') {
+  if (isNew && animationIntensity !== 'off') {
     classes.push('arrival-bounce');
     if (animationIntensity === 'full' && !compact) classes.push('arrival-glow');
   }

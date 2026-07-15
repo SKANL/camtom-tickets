@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ConfigResponse } from '@camtom/shared';
 
 const CACHE_KEY = 'camtom-config-cache';
@@ -12,26 +12,21 @@ interface ConfigCache {
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 export function useConfig() {
-  const [config, setConfig] = useState<ConfigResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const initialConfigRef = useRef<ConfigResponse | null | undefined>(undefined);
+  if (initialConfigRef.current === undefined) initialConfigRef.current = configFromCache(loadCache());
+
+  const [config, setConfig] = useState<ConfigResponse | null>(initialConfigRef.current);
+  const [loading, setLoading] = useState(initialConfigRef.current === null);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchConfig = useCallback(async () => {
+    setRefreshing(true);
     try {
       const res = await fetch('/api/config');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: ConfigResponse = await res.json();
 
-      // Check localStorage cache
-      const cached = loadCache();
-      if (cached && cached.version === data.version) {
-        // Cache hit — use cached data (already in state from previous load)
-        setConfig(data);
-        setLoading(false);
-        return data;
-      }
-
-      // Cache miss or new version — save to cache
       saveCache({
         version: data.version,
         data: { slas: data.slas, dashboard: data.dashboard },
@@ -40,17 +35,19 @@ export function useConfig() {
 
       setConfig(data);
       setLoading(false);
+      setRefreshing(false);
+      setError(null);
       return data;
     } catch (err: any) {
-      // Try loading from cache as fallback
-      const cached = loadCache();
-      if (cached) {
-        setConfig({ ...cached.data, version: cached.version });
+      const fallback = configFromCache(loadCache());
+      if (fallback) {
+        setConfig((current) => current ?? fallback);
         setError(null); // Silent fallback — cached data is better than nothing
       } else {
         setError(err.message);
       }
       setLoading(false);
+      setRefreshing(false);
       return null;
     }
   }, []);
@@ -63,7 +60,7 @@ export function useConfig() {
     return () => clearInterval(interval);
   }, [fetchConfig]);
 
-  return { config, loading, error, refetch: fetchConfig };
+  return { config, loading, refreshing, error, refetch: fetchConfig };
 }
 
 function loadCache(): ConfigCache | null {
@@ -71,15 +68,15 @@ function loadCache(): ConfigCache | null {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const cache: ConfigCache = JSON.parse(raw);
-    // Check TTL
-    if (Date.now() - cache.cachedAt > CACHE_TTL_MS) {
-      localStorage.removeItem(CACHE_KEY);
-      return null;
-    }
-    return cache;
+    if (!cache?.version || !cache?.data?.dashboard || !Array.isArray(cache?.data?.slas)) return null;
+    return cache; // stale config is still safe for first paint while the request refreshes it
   } catch {
     return null;
   }
+}
+
+function configFromCache(cache: ConfigCache | null): ConfigResponse | null {
+  return cache ? { ...cache.data, version: cache.version } : null;
 }
 
 function saveCache(cache: ConfigCache): void {

@@ -82,13 +82,14 @@ function App() {
       return {};
     }
   });
-  const { config: serverConfig } = useConfig();
+  const { config: serverConfig, loading: configLoading } = useConfig();
   const config = mergeConfig(serverConfig, settingsOverrides);
-  const { issues, loading, error } = useIssues();
+  const { issues, loading: issuesLoading, error, lastUpdated, connection } = useIssues();
 
   // Active team + its board-worthiness criterion (from config). The team selector
   // in Settings just changes activeTeamId; each team carries its own filter/timer.
   const activeTeam = activeTeamOf(config?.dashboard?.teams, config?.dashboard?.activeTeamId);
+  const boardReady = Boolean(config && (!(config.dashboard.teams?.length) || activeTeam));
   const teamIssues = useMemo(
     () => issues.filter((i) => matchesTeam(i, activeTeam)),
     [issues, activeTeam?.id, activeTeam?.filter],
@@ -183,7 +184,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (loading || issues.length === 0) return;
+    if (issuesLoading || !boardReady || issues.length === 0) return;
     const currentIds = new Set(issues.map((i) => i.id));
     const prevIds = prevIssuesRef.current;
 
@@ -237,14 +238,22 @@ function App() {
     }
     servedIdsRef.current = servedNow;
     prevIssuesRef.current = currentIds;
-  }, [issues, loading, timers, sound, activeTeam?.id, activeTeam?.filter]);
+  }, [issues, issuesLoading, boardReady, timers, sound, activeTeam?.id, activeTeam?.filter]);
 
   const isFriday = new Date().getDay() === 5;
   const toggleReport = () => setShowReport((prev) => !prev);
   const title = config?.dashboard?.title || 'Panel de Soporte Camtom';
+  const syncLabel = connection === 'live' ? 'En vivo' : connection === 'reconnecting' ? 'Reconectando' : 'Conectando';
+  const updatedLabel = lastUpdated
+    ? new Date(lastUpdated).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : 'sin datos aún';
+  const visibleCount = filteredIssues.filter((issue) => {
+    const zone = zoneForIssue(issue);
+    return zone === 'new' || zone === 'active';
+  }).length + doneToday.length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', width: '100vw', overflow: 'hidden' }}>
       <Header
         title={title}
         isMuted={sound.isMuted}
@@ -253,9 +262,10 @@ function App() {
         showReport={showReport}
         isFriday={isFriday}
         config={config}
-        activeTeam={activeTeam}
+        activeTeam={boardReady ? activeTeam : undefined}
         onOpenSettings={() => setShowSettings(true)}
       />
+      <main style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {error && (
         <div
           role="alert"
@@ -272,14 +282,58 @@ function App() {
           Problema de conexión — mostrando los últimos datos. {error}
         </div>
       )}
+      <div
+        role="status"
+        aria-live="polite"
+        className="sync-status"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          flexWrap: 'wrap',
+          padding: '6px var(--space-lg)',
+          background: 'rgba(0,0,0,0.22)',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          color: 'rgba(255,255,255,0.65)',
+          fontSize: 'var(--text-xs)',
+          flexShrink: 0,
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span
+            aria-hidden="true"
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: connection === 'live' ? 'var(--color-lettuce)' : 'var(--color-mustard)',
+              boxShadow: connection === 'live' ? '0 0 8px rgba(76,175,80,.65)' : 'none',
+            }}
+          />
+          {syncLabel} · Última actualización: {updatedLabel}
+        </span>
+        <span>
+          {activeTeam?.filter === 'ticket-label' ? 'Etiqueta: ticket' : 'Todos los estados activos'}
+          {' · '}{boardReady ? visibleCount : 0} visibles de {issues.length}
+        </span>
+      </div>
       {showReport ? (
-        <FridayReport issues={issues} playSuccess={sound.playSuccess} config={config} />
+        boardReady ? <FridayReport issues={issues} playSuccess={sound.playSuccess} config={config} /> : null
       ) : (
         <>
           <FilterBar metadata={metadata} filter={filter} onChange={setFilter} />
-          <Dashboard issues={filteredIssues} doneToday={doneToday} timers={timers} loading={loading} error={error} config={config} />
+          <Dashboard
+            issues={boardReady ? filteredIssues : []}
+            doneToday={boardReady ? doneToday : []}
+            timers={timers}
+            loading={issuesLoading || configLoading || !boardReady}
+            error={error}
+            config={config}
+          />
         </>
       )}
+      </main>
 
       {showSettings && config && (
         <SettingsPanel

@@ -26,6 +26,11 @@ const mockTimer = {
 };
 
 describe('TicketCard', () => {
+  it('starts its arrival animation on the first paint', () => {
+    const { container } = render(<TicketCard issue={mockIssue} config={null} />);
+    expect(container.firstElementChild).toHaveClass('arrival-bounce');
+  });
+
   it('renders issue identifier', () => {
     render(<TicketCard issue={mockIssue} config={null} />);
     expect(screen.getByText(/TEST-123/)).toBeInTheDocument();

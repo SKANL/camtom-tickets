@@ -54,20 +54,16 @@
 /* Arrival bounce — playful hop on new ticket */
 @keyframes arrival-bounce {
   0% {
-    transform: scale(0.8) rotate(-2deg);
-    opacity: 0;
+    transform: scale(0.92) rotate(-2deg);
   }
   40% {
     transform: scale(1.08) rotate(1deg);
-    opacity: 1;
   }
   70% {
     transform: scale(0.96) rotate(-0.5deg);
-    opacity: 1;
   }
   100% {
     transform: scale(1) rotate(var(--ticket-rotation, 0deg));
-    opacity: 1;
   }
 }
 
@@ -197,6 +193,17 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .arrival-bounce,
+  .arrival-glow,
+  .siren-flash,
+  .burnt-fade,
+  .urgent-pulse,
+  .pulse-warming,
+  .pulse-heating,
+  .pulse-critical,
+  .expired-burn,
+  .ticket-heating-pulse,
+  .ticket-critical-pulse,
   .kitchen-chef-idle,
   .kitchen-chef-panic,
   .kitchen-steam,
