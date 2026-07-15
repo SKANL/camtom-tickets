@@ -17,6 +17,12 @@ interface SlaTabProps {
   setEditingSla: (sla: SLAConfig | null) => void;
 }
 
+const TIER_LABELS: Record<'warming' | 'heating' | 'critical', string> = {
+  warming: 'tibio',
+  heating: 'caliente',
+  critical: 'crítico',
+};
+
 export function SlaTab({
   slaRules,
   editingSla,
@@ -47,7 +53,7 @@ export function SlaTab({
           {editingSla?.id === sla.id ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'var(--text-xs)', minWidth: 40 }}>Label</span>
+                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'var(--text-xs)', minWidth: 40 }}>Etiqueta</span>
                 <input
                   value={editingSla.label}
                   onChange={(e) => setEditingSla({ ...editingSla, label: e.target.value })}
@@ -55,7 +61,7 @@ export function SlaTab({
                 />
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'var(--text-xs)', minWidth: 40 }}>Minutes</span>
+                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'var(--text-xs)', minWidth: 40 }}>Minutos</span>
                 <input
                   type="number"
                   min={1}
@@ -65,10 +71,10 @@ export function SlaTab({
                 />
               </div>
               <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'var(--text-xs)', minWidth: 40 }}>Thresholds</span>
+                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'var(--text-xs)', minWidth: 40 }}>Umbrales</span>
                 {(['warming', 'heating', 'critical'] as const).map((tier) => (
                   <label key={tier} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.6)' }}>
-                    {tier}
+                    {TIER_LABELS[tier]}
                     <input
                       type="number"
                       min={0.01}
@@ -90,7 +96,7 @@ export function SlaTab({
                 ))}
               </div>
               <div>
-                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'var(--text-xs)', display: 'block', marginBottom: 4 }}>Applicable Priorities</span>
+                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'var(--text-xs)', display: 'block', marginBottom: 4 }}>Prioridades aplicables</span>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {[1, 2, 3, 4, 0].map((p) => (
                     <Button
@@ -110,14 +116,14 @@ export function SlaTab({
                   onClick={() => setEditingSla(null)}
                   style={{ padding: '4px 12px', fontSize: 'var(--text-xs)' }}
                 >
-                  Cancel
+                  Cancelar
                 </Button>
                 <Button
                   variant="primary"
                   onClick={() => handleSaveSla(editingSla)}
                   style={{ padding: '4px 12px', fontSize: 'var(--text-xs)' }}
                 >
-                  Save
+                  Guardar
                 </Button>
               </div>
             </div>
@@ -133,14 +139,14 @@ export function SlaTab({
                 onClick={() => setEditingSla(sla)}
                 style={{ padding: '2px 8px', fontSize: 'var(--text-xs)' }}
               >
-                Edit
+                Editar
               </Button>
               <Button
                 variant="danger"
                 onClick={() => handleRemoveSla(sla.id)}
                 style={{ padding: '2px 8px', fontSize: 'var(--text-xs)' }}
               >
-                Remove
+                Quitar
               </Button>
             </div>
           )}
@@ -161,7 +167,7 @@ export function SlaTab({
           gap: 6,
         }}
       >
-        <IconPlus size={14} /> Add SLA Rule
+        <IconPlus size={14} /> Agregar regla SLA
       </Button>
     </div>
   );

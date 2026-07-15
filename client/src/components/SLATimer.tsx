@@ -21,11 +21,11 @@ interface StateMeta {
 }
 
 const stateMeta: Record<TimerState, StateMeta> = {
-  FRESH:    { color: 'var(--sla-ok, #4CAF50)',       glowColor: 'rgba(76,175,80,0.4)',   label: 'Fresh' },
-  WARMING:  { color: 'var(--sla-warming, #FFC107)',   glowColor: 'rgba(255,193,7,0.4)',   label: 'Warming' },
-  HEATING:  { color: 'var(--sla-heating, #FF9800)',   glowColor: 'rgba(255,152,0,0.5)',   label: 'Heating' },
-  CRITICAL: { color: 'var(--sla-critical, #F44336)',  glowColor: 'rgba(244,67,54,0.6)',   label: 'Critical' },
-  EXPIRED:  { color: 'var(--sla-expired, #B71C1C)',   glowColor: 'rgba(183,28,28,0.7)',   label: 'Expired' },
+  FRESH:    { color: 'var(--sla-ok, #4CAF50)',       glowColor: 'rgba(76,175,80,0.4)',   label: 'Fresco' },
+  WARMING:  { color: 'var(--sla-warming, #FFC107)',   glowColor: 'rgba(255,193,7,0.4)',   label: 'Tibio' },
+  HEATING:  { color: 'var(--sla-heating, #FF9800)',   glowColor: 'rgba(255,152,0,0.5)',   label: 'Caliente' },
+  CRITICAL: { color: 'var(--sla-critical, #F44336)',  glowColor: 'rgba(244,67,54,0.6)',   label: 'Crítico' },
+  EXPIRED:  { color: 'var(--sla-expired, #B71C1C)',   glowColor: 'rgba(183,28,28,0.7)',   label: 'Vencido' },
 };
 
 /**
@@ -284,7 +284,7 @@ export function SLATimer({
             transition: 'opacity 0.3s ease',
           }}
         >
-          {state === 'EXPIRED' ? 'BURNED' : label}
+          {state === 'EXPIRED' ? 'QUEMADO' : label}
         </span>
       )}
     </div>

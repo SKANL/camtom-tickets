@@ -153,23 +153,110 @@ button:focus-visible {
   overflow: hidden;
 }
 
-/* Order board columns */
-.order-board {
+/* ---- Board: stacked zones (untaken hero → in-progress → served) ---- */
+.board {
   display: flex;
+  flex-direction: column;
   gap: var(--space-md);
   padding: var(--space-md);
   flex: 1;
-  overflow-x: hidden;
-  overflow-y: hidden;
   min-height: 0;
+  overflow: hidden;
 }
 
-.order-column {
-  flex: 1 1 0;
-  min-width: 0;
+.zone {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+.zone-new { flex: 1 1 auto; }            /* hero — the lion's share */
+.zone-active { flex: 0 1 auto; max-height: 34%; }
+.zone-done { flex: 0 0 auto; }
+
+.zone-header { margin-bottom: var(--space-sm); }
+.zone-header h2 { color: inherit; }
+
+/* Responsive card grid — auto-fills, wraps, and never overflows its row */
+.zone-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: var(--space-md);
+  align-content: start;
+  /* Size each row to its card's real content — a -webkit-box title otherwise
+     reports a collapsed intrinsic height and the row clips the card. */
+  grid-auto-rows: max-content;
+}
+
+.zone-grid-compact {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: var(--space-sm);
+}
+
+.zone-scroll {
+  overflow-y: auto;
+  min-height: 0;
+  padding: 4px var(--space-sm) var(--space-sm) 4px;
+}
+
+/* Served-today shelf */
+.done-shelf {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(76, 175, 80, 0.08);
+  border: 1px dashed rgba(76, 175, 80, 0.3);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.done-shelf-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-display);
+  color: var(--color-lettuce);
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.done-chips {
+  display: flex;
+  gap: var(--space-sm);
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.done-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+/* Smaller screens: relax card minimums, scale TV-sized type down, shrink the strip */
+@media (max-width: 900px) {
+  .zone-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
+  .zone-active { max-height: 42%; }
+}
+
+@media (max-width: 600px) {
+  :root {
+    --text-4xl: 2.25rem;
+    --text-3xl: 1.75rem;
+    --text-2xl: 1.4rem;
+    --text-xl: 1.2rem;
+  }
+  .board { padding: var(--space-sm); gap: var(--space-sm); }
+  .zone-grid, .zone-grid-compact { grid-template-columns: 1fr; }
 }
 
 /* Section headers with chef styling */
@@ -203,22 +290,73 @@ button:focus-visible {
   box-shadow: 0 0 6px currentColor;
 }
 
-/* Empty state styling */
-.empty-state {
+/* ---- Empty / error scene — replaces the blank board ---- */
+.kitchen-scene {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: var(--space-2xl);
-  color: rgba(255, 255, 255, 0.2);
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
-  letter-spacing: 0.05em;
   text-align: center;
   gap: var(--space-md);
+  padding: var(--space-2xl);
 }
 
-.empty-state-icon {
-  font-size: 3rem;
-  opacity: 0.4;
+.kitchen-stage {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+
+.kitchen-headline {
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+
+.kitchen-sub {
+  font-family: var(--font-body);
+  font-size: var(--text-lg);
+  color: rgba(255, 255, 255, 0.6);
+  max-width: 32ch;
+}
+
+.kitchen-scene-idle .kitchen-headline { color: var(--color-lettuce); }
+.kitchen-scene-idle .kitchen-chef { color: var(--color-mayo); }
+
+.kitchen-scene-error .kitchen-headline { color: var(--color-ketchup); }
+.kitchen-scene-error .kitchen-chef { color: var(--color-oil); }
+
+.kitchen-chef-idle { animation: chef-bob 2.4s ease-in-out infinite; }
+.kitchen-chef-panic { animation: chef-panic 0.4s ease-in-out infinite; }
+
+/* Rising steam on the idle scene */
+.kitchen-steam {
+  position: absolute;
+  bottom: 24px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  opacity: 0;
+  animation: steam-rise 2.6s ease-in infinite;
+}
+.kitchen-steam-1 { left: 46px; animation-delay: 0s; }
+.kitchen-steam-2 { left: 66px; animation-delay: 0.6s; }
+.kitchen-steam-3 { left: 86px; animation-delay: 1.2s; }
+
+/* Panic sparks on the error scene */
+.kitchen-spark {
+  position: absolute;
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  color: var(--color-mustard);
+  animation: spark-float 1.1s ease-in-out infinite;
+}
+.kitchen-spark-1 { top: 8px; left: 18px; }
+.kitchen-spark-2 { top: 16px; right: 18px; animation-delay: 0.5s; }

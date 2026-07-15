@@ -17,6 +17,11 @@
   /* Status Colors */
   --sla-ok: var(--color-lettuce);
 
+  /* SLA traffic light — 3 colours driven by the timer, not priority */
+  --sla-green: var(--color-lettuce);
+  --sla-amber: var(--color-oil);
+  --sla-red: var(--color-ketchup);
+
   /* Priority Colors */
   --priority-urgent: var(--color-ketchup);
   --priority-high: var(--color-oil);

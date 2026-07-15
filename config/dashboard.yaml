@@ -5,31 +5,34 @@ displayOrder:
   - 4
   - 0
 kitchenPhrases:
-  breachedTimer: Order BURNED!
-  emptyState: No tickets — kitchen is quiet!
-  warningTimer: Order is getting cold!
+  emptyState: ¡Cocina limpia!
+  emptyStateSub: No hay tickets pendientes.
+  errorState: Perdimos la cocina
+  errorStateSub: Sin conexión en tiempo real — mostrando lo último que vimos. Reintentando…
+  warningTimer: ¡La orden se enfría!
+  breachedTimer: ¡Orden QUEMADA!
 pollingInterval: 30000
 priorityLabels:
   '0':
     color: var(--priority-none)
     dotColor: '#9E9E9E'
-    label: No Priority
+    label: Sin prioridad
   '1':
     color: var(--priority-urgent)
     dotColor: '#D32F2F'
-    label: Urgent
+    label: Urgente
   '2':
     color: var(--priority-high)
     dotColor: '#FF8C00'
-    label: High
+    label: Alta
   '3':
     color: var(--priority-medium)
     dotColor: '#E0A82E'
-    label: Medium
+    label: Media
   '4':
     color: var(--priority-low)
     dotColor: '#4CAF50'
-    label: Low
+    label: Baja
 report:
   enabled: true
   slaWindowHours: 24
@@ -39,23 +42,27 @@ displayOptions:
 stateLabels:
   canceled:
     icon: x
-    label: 86'd
+    label: Cancelado
   completed:
     icon: check
-    label: Done
+    label: Listo
   started:
     icon: fork-knife
-    label: Prep
+    label: En prep
   triaged:
     icon: search
-    label: Triaged
+    label: Triage
   unstarted:
     icon: edit
-    label: Order In
+    label: Entró
+zoneLabels:
+  new: Sin tomar
+  active: En progreso
+  done: Servidos hoy
 teamMembers:
   - Román
   - Pedro
   - Lucía
   - Carlos
   - Ana
-title: Camtom Ticket Dashboard
+title: Panel de Soporte Camtom

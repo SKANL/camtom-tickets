@@ -45,9 +45,19 @@ export interface StateLabelConfig {
 }
 
 export interface KitchenPhrases {
-  emptyState: string;
+  emptyState: string; // idle headline ("all caught up")
+  emptyStateSub?: string; // idle subtitle
+  errorState?: string; // connection-lost headline
+  errorStateSub?: string; // connection-lost subtitle
   warningTimer: string;
   breachedTimer: string;
+}
+
+/** Titles for the three board zones (untaken / in-progress / served). */
+export interface ZoneLabels {
+  new: string;
+  active: string;
+  done: string;
 }
 
 export interface DashboardConfig {
@@ -62,6 +72,7 @@ export interface DashboardConfig {
     enabled: boolean;
   };
   kitchenPhrases: KitchenPhrases;
+  zoneLabels?: ZoneLabels;
   displayOptions?: DisplayOptions;
 }
 

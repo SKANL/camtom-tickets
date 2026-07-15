@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ConfigResponse, PriorityLabelConfig, KitchenPhrases, SLAConfig, DisplayOptions } from '@camtom/shared';
+import { ConfigResponse, PriorityLabelConfig, KitchenPhrases, ZoneLabels, SLAConfig, DisplayOptions } from '@camtom/shared';
 import { IconX, IconSettings, IconCheckmark } from './Icons';
 import { PRIORITY_LEVELS } from '../lib/priorities';
 import { Badge } from './ui/Badge';
@@ -17,6 +17,7 @@ export interface SettingsOverrides {
   teamMembers?: string[];
   priorityLabels?: Record<number, Partial<PriorityLabelConfig>>;
   kitchenPhrases?: Partial<KitchenPhrases>;
+  zoneLabels?: Partial<ZoneLabels>;
   slaWindowHours?: number;
   displayOptions?: Partial<DisplayOptions>;
 }
@@ -49,10 +50,10 @@ type TabId = 'general' | 'display' | 'sla' | 'labels' | 'sounds';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'general', label: 'General' },
-  { id: 'display', label: 'Display' },
+  { id: 'display', label: 'Pantalla' },
   { id: 'sla', label: 'SLA' },
-  { id: 'labels', label: 'Labels & Phrases' },
-  { id: 'sounds', label: 'Sounds' },
+  { id: 'labels', label: 'Etiquetas y frases' },
+  { id: 'sounds', label: 'Sonidos' },
 ];
 
 export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) {
@@ -70,9 +71,16 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
   const [slaValidation, setSlaValidation] = useState<string | null>(null);
 
   // Derived values
-  const title = overrides.title ?? config?.dashboard?.title ?? 'Camtom Ticket Dashboard';
+  const title = overrides.title ?? config?.dashboard?.title ?? 'Panel de Soporte Camtom';
   const teamMembers = overrides.teamMembers ?? config?.dashboard?.teamMembers ?? [];
   const kitchenPhrases = { ...config?.dashboard?.kitchenPhrases, ...overrides.kitchenPhrases } as KitchenPhrases;
+  const zoneLabels = {
+    new: 'Sin tomar',
+    active: 'En progreso',
+    done: 'Servidos hoy',
+    ...config?.dashboard?.zoneLabels,
+    ...overrides.zoneLabels,
+  } as ZoneLabels;
   const slaWindowHours = overrides.slaWindowHours ?? config?.dashboard?.report?.slaWindowHours ?? 24;
   const displayOptions: Partial<DisplayOptions> = {
     ...config?.dashboard?.displayOptions,
@@ -131,6 +139,17 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
     });
   }, []);
 
+  const setZone = useCallback((key: keyof ZoneLabels, value: string) => {
+    setOverrides((prev) => {
+      const next = {
+        ...prev,
+        zoneLabels: { ...prev.zoneLabels, [key]: value },
+      };
+      saveOverrides(next);
+      return next;
+    });
+  }, []);
+
   const addTeamMember = useCallback((name: string) => {
     if (!name.trim()) return;
     setOverrides((prev) => {
@@ -161,7 +180,7 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
   const handleAddSla = () => {
     const newSla: SLAConfig = {
       id: `sla_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      label: 'New SLA',
+      label: 'Nueva SLA',
       applicablePriorities: [1, 2],
       maxMinutes: 30,
       warningThresholds: { warming: 0.6, heating: 0.3, critical: 0.1 },
@@ -178,15 +197,15 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
   const handleSaveSla = (sla: SLAConfig) => {
     // Validate
     if (sla.maxMinutes < 1) {
-      setSlaValidation('maxMinutes must be ≥ 1');
+      setSlaValidation('Los minutos deben ser ≥ 1');
       return;
     }
     if (!sla.label.trim()) {
-      setSlaValidation('Label is required');
+      setSlaValidation('La etiqueta es obligatoria');
       return;
     }
     if (sla.applicablePriorities.length === 0) {
-      setSlaValidation('At least one applicable priority required');
+      setSlaValidation('Elegí al menos una prioridad');
       return;
     }
     setSlaValidation(null);
@@ -229,6 +248,9 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
       if (overrides.title !== undefined) dashUpdate.title = overrides.title;
       if (overrides.teamMembers !== undefined) dashUpdate.teamMembers = overrides.teamMembers;
       if (overrides.kitchenPhrases !== undefined) dashUpdate.kitchenPhrases = overrides.kitchenPhrases;
+      if (overrides.zoneLabels !== undefined) {
+        dashUpdate.zoneLabels = { ...config?.dashboard?.zoneLabels, ...overrides.zoneLabels };
+      }
       if (overrides.displayOptions !== undefined) {
         dashUpdate.displayOptions = {
           ...config?.dashboard?.displayOptions,
@@ -317,7 +339,7 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Dashboard Settings"
+        aria-label="Configuración del panel"
         style={{
           background: '#1A0F0A',
           border: '2px solid rgba(255,99,71,0.3)',
@@ -354,7 +376,7 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
                 letterSpacing: '0.05em',
               }}
             >
-              Dashboard Settings
+              Configuración del panel
             </h2>
           </div>
           <button
@@ -455,8 +477,10 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
             <LabelsTab
               priorityLabels={priorityLabels}
               kitchenPhrases={kitchenPhrases}
+              zoneLabels={zoneLabels}
               setPriorityOverride={setPriorityOverride}
               setPhrase={setPhrase}
+              setZone={setZone}
             />
           )}
 
@@ -488,7 +512,7 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
           )}
           {saveStatus === 'saved' && (
             <Badge style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-body)', color: 'var(--color-lettuce)', marginRight: 'auto' }}>
-              <IconCheckmark size={12} /> Saved
+              <IconCheckmark size={12} /> Guardado
             </Badge>
           )}
           <Button
@@ -496,7 +520,7 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
             onClick={handleReset}
             style={{ padding: '8px 20px', fontSize: 'var(--text-sm)', letterSpacing: '0.05em' }}
           >
-            Reset to Defaults
+            Restablecer valores
           </Button>
           <Button
             variant="primary"
@@ -510,7 +534,7 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
               letterSpacing: '0.05em',
             }}
           >
-            {saving ? 'Saving...' : 'Save to Server'}
+            {saving ? 'Guardando...' : 'Guardar en servidor'}
           </Button>
         </div>
       </div>

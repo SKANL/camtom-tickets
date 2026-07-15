@@ -92,7 +92,7 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
               letterSpacing: '0.1em',
             }}
           >
-            ORDER BOARD · LIVE
+            TABLERO · EN VIVO
           </p>
         </div>
       </div>
@@ -128,7 +128,7 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
               animation: 'pulseWarning 2s ease-in-out infinite',
             }}
           >
-            <IconChart size={16} /> Friday Report!
+            <IconChart size={16} /> ¡Reporte del viernes!
           </span>
         )}
 
@@ -156,7 +156,7 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
             e.currentTarget.style.background = showReport ? 'var(--color-avocado)' : 'rgba(255,255,255,0.08)';
           }}
         >
-          {showReport ? <><IconClipboard size={16} /> Board</> : <><IconChart size={16} /> Report</>}
+          {showReport ? <><IconClipboard size={16} /> Tablero</> : <><IconChart size={16} /> Reporte</>}
         </button>
 
         {/* Current time — styled like a kitchen clock, less competing orange */}
@@ -182,7 +182,7 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
           <button
             data-cuelume-press="toggle"
             onClick={onOpenSettings}
-            title="Dashboard Settings"
+            title="Configuración"
             style={{
               background: 'rgba(255,255,255,0.06)',
               border: '1px solid rgba(255,255,255,0.1)',

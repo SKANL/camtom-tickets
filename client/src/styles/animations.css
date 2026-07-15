@@ -167,3 +167,40 @@
 .ticket-critical-pulse {
   animation: ticket-critical-pulse 0.8s ease-in-out infinite;
 }
+
+/* ---- Empty / error kitchen scene ---- */
+
+/* Idle chef gently bobbing — "all caught up" */
+@keyframes chef-bob {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-10px) rotate(2deg); }
+}
+
+/* Panicked chef when the connection is lost */
+@keyframes chef-panic {
+  0%, 100% { transform: translateX(0) rotate(-4deg); }
+  25% { transform: translateX(-4px) rotate(3deg); }
+  75% { transform: translateX(4px) rotate(-3deg); }
+}
+
+/* Steam curling up off the clean station */
+@keyframes steam-rise {
+  0% { transform: translateY(0) scale(1); opacity: 0; }
+  30% { opacity: 0.5; }
+  100% { transform: translateY(-70px) scale(1.8); opacity: 0; }
+}
+
+/* Alarm sparks bouncing on the error scene */
+@keyframes spark-float {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.5; }
+  50% { transform: translateY(-8px) scale(1.3); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kitchen-chef-idle,
+  .kitchen-chef-panic,
+  .kitchen-steam,
+  .kitchen-spark {
+    animation: none;
+  }
+}

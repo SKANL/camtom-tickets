@@ -5,6 +5,7 @@ export type {
   PriorityLabelConfig,
   StateLabelConfig,
   KitchenPhrases,
+  ZoneLabels,
   DashboardConfig,
   ConfigResponse,
   TimerState,

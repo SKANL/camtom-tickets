@@ -88,7 +88,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
           gap: 6,
         }}
       >
-        Filters
+        Filtros
         {activeCount > 0 && (
           <span
             style={{
@@ -115,7 +115,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
             <IconSearch size={14} style={{ position: 'absolute', left: 8, color: 'rgba(255,255,255,0.3)' }} />
             <input
-              placeholder="Search tickets..."
+              placeholder="Buscar tickets..."
               value={filter.textSearch}
               onChange={(e) => setFilter('textSearch', e.target.value)}
               disabled={disabled}
@@ -135,7 +135,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
 
           {/* Status select */}
           <FilterSelect
-            label="State"
+            label="Estado"
             options={metadata?.workflowStates ?? []}
             selected={filter.states}
             onChange={(id) => toggleArray('states', id)}
@@ -144,7 +144,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
 
           {/* Assignee select */}
           <FilterSelect
-            label="Assignee"
+            label="Responsable"
             options={metadata?.users ?? []}
             selected={filter.assignees}
             onChange={(id) => toggleArray('assignees', id)}
@@ -153,7 +153,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
 
           {/* Label select */}
           <FilterSelect
-            label="Label"
+            label="Etiqueta"
             options={metadata?.labels ?? []}
             selected={filter.labels}
             onChange={(id) => toggleArray('labels', id)}
@@ -162,7 +162,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
 
           {/* Project select */}
           <FilterSelect
-            label="Project"
+            label="Proyecto"
             options={metadata?.projects ?? []}
             selected={filter.projects}
             onChange={(id) => toggleArray('projects', id)}
@@ -171,7 +171,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
 
           {/* Priority select */}
           <FilterSelect
-            label="Priority"
+            label="Prioridad"
             options={PRIORITY_OPTIONS}
             selected={filter.priorities.map(String)}
             onChange={(id) => toggleArray('priorities', id)}
@@ -188,7 +188,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
           {activeCount > 0 && (
             <button
               onClick={clearAll}
-              title="Clear all filters"
+              title="Limpiar todos los filtros"
               style={{
                 background: 'rgba(255,255,255,0.06)',
                 border: '1px solid rgba(255,255,255,0.1)',
@@ -206,7 +206,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
               onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = '#fff'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
             >
-              <IconX size={14} /> Clear
+              <IconX size={14} /> Limpiar
             </button>
           )}
         </>
@@ -296,7 +296,7 @@ function FilterSelect({ label, options, selected, onChange, disabled, stringIds 
           >
             {options.length === 0 && (
               <div style={{ padding: 8, color: 'rgba(255,255,255,0.4)', fontSize: 'var(--text-xs)' }}>
-                No options
+                Sin opciones
               </div>
             )}
             {options.map((opt) => {

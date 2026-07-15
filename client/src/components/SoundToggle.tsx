@@ -10,8 +10,8 @@ export function SoundToggle({ isMuted, onToggle }: SoundToggleProps) {
   return (
     <button
       onClick={onToggle}
-      title={isMuted ? 'Unmute sounds' : 'Mute sounds'}
-      aria-label={isMuted ? 'Unmute sounds' : 'Mute sounds'}
+      title={isMuted ? 'Activar sonidos' : 'Silenciar sonidos'}
+      aria-label={isMuted ? 'Activar sonidos' : 'Silenciar sonidos'}
       style={{
         background: 'rgba(255,255,255,0.1)',
         border: '2px solid rgba(255,255,255,0.2)',
@@ -34,7 +34,7 @@ export function SoundToggle({ isMuted, onToggle }: SoundToggleProps) {
       }}
     >
       {isMuted ? <IconVolumeMute size={20} /> : <IconVolume size={20} />}
-      <span>{isMuted ? 'Muted' : 'Sounds'}</span>
+      <span>{isMuted ? 'Silenciado' : 'Sonido'}</span>
     </button>
   );
 }

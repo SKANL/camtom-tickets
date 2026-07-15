@@ -36,11 +36,6 @@ describe('TicketCard', () => {
     expect(screen.getByText('Fix login page timeout')).toBeInTheDocument();
   });
 
-  it('renders priority badge with Urgent label', () => {
-    render(<TicketCard issue={mockIssue} config={null} />);
-    expect(screen.getByText(/Urgent/)).toBeInTheDocument();
-  });
-
   it('renders assignee name', () => {
     render(<TicketCard issue={mockIssue} config={null} />);
     expect(screen.getByText('Alice')).toBeInTheDocument();
@@ -55,7 +50,7 @@ describe('TicketCard', () => {
 
   it('renders status label', () => {
     render(<TicketCard issue={mockIssue} config={null} />);
-    expect(screen.getByText('Prep')).toBeInTheDocument();
+    expect(screen.getByText('En prep')).toBeInTheDocument();
   });
 
   it('renders SLATimer when timers prop is provided', () => {
@@ -71,7 +66,7 @@ describe('TicketCard', () => {
       state: { id: 'state-2', name: 'Done', type: 'completed' },
     };
     render(<TicketCard issue={completedIssue} config={null} />);
-    expect(screen.getByText('Done')).toBeInTheDocument();
+    expect(screen.getByText('Listo')).toBeInTheDocument();
   });
 
   it('does not render SLATimer when timer prop is not provided', () => {

@@ -27,11 +27,11 @@ export interface PriorityMeta {
  * duplicated across TicketCard, PriorityGroup, FilterBar, SettingsPanel and Icons.
  */
 export const PRIORITIES: PriorityMeta[] = [
-  { level: 1, name: 'Urgent', colorVar: 'var(--priority-urgent)', gaugeColor: 'var(--color-ketchup)', dotColor: '#D32F2F', icon: IconFire },
-  { level: 2, name: 'High', colorVar: 'var(--priority-high)', gaugeColor: 'var(--color-oil)', dotColor: '#FF8C00', icon: IconFlash },
-  { level: 3, name: 'Medium', colorVar: 'var(--priority-medium)', gaugeColor: '#E0A82E', dotColor: '#E0A82E', icon: IconClipboard },
-  { level: 4, name: 'Low', colorVar: 'var(--priority-low)', gaugeColor: 'var(--color-lettuce)', dotColor: '#4CAF50', icon: IconCheck },
-  { level: 0, name: 'No Priority', colorVar: 'var(--priority-none)', gaugeColor: '#9E9E9E', dotColor: '#9E9E9E', icon: IconMinusSquare },
+  { level: 1, name: 'Urgente', colorVar: 'var(--priority-urgent)', gaugeColor: 'var(--color-ketchup)', dotColor: '#D32F2F', icon: IconFire },
+  { level: 2, name: 'Alta', colorVar: 'var(--priority-high)', gaugeColor: 'var(--color-oil)', dotColor: '#FF8C00', icon: IconFlash },
+  { level: 3, name: 'Media', colorVar: 'var(--priority-medium)', gaugeColor: '#E0A82E', dotColor: '#E0A82E', icon: IconClipboard },
+  { level: 4, name: 'Baja', colorVar: 'var(--priority-low)', gaugeColor: 'var(--color-lettuce)', dotColor: '#4CAF50', icon: IconCheck },
+  { level: 0, name: 'Sin prioridad', colorVar: 'var(--priority-none)', gaugeColor: '#9E9E9E', dotColor: '#9E9E9E', icon: IconMinusSquare },
 ];
 
 export const PRIORITY_LEVELS: number[] = PRIORITIES.map((p) => p.level);
@@ -47,11 +47,6 @@ export const priorityIcons: Record<number, IconComponent> = Object.fromEntries(
 
 /** { id, name } options for the priority filter dropdown */
 export const PRIORITY_OPTIONS = PRIORITIES.map((p) => ({ id: String(p.level), name: p.name }));
-
-/** level → gauge strip color */
-export const priorityGaugeColors: Record<number, string> = Object.fromEntries(
-  PRIORITIES.map((p) => [p.level, p.gaugeColor]),
-);
 
 /** Default label/color config used as a fallback when server config is absent */
 export const defaultPriorityConfig: Record<number, { label: string; color: string; dotColor: string }> =

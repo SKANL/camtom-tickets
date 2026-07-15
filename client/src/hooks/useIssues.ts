@@ -86,8 +86,11 @@ export function useIssues(): IssuesState {
         },
       )
       .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          setState((prev) => ({ ...prev, error: 'Realtime connection lost — retrying…' }));
+        if (status === 'SUBSCRIBED') {
+          // Recovered — clear any lingering connection error.
+          setState((prev) => (prev.error ? { ...prev, error: null } : prev));
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          setState((prev) => ({ ...prev, error: 'Se perdió la conexión en tiempo real — reintentando…' }));
         }
       });
 

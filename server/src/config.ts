@@ -43,7 +43,15 @@ interface RawDashboardFile {
   priorityLabels: Record<number, { label: string; color: string; dotColor: string }>;
   stateLabels: Record<string, { label: string; icon: string }>;
   report: { slaWindowHours: number; enabled: boolean };
-  kitchenPhrases: { emptyState: string; warningTimer: string; breachedTimer: string };
+  kitchenPhrases: {
+    emptyState: string;
+    emptyStateSub?: string;
+    errorState?: string;
+    errorStateSub?: string;
+    warningTimer: string;
+    breachedTimer: string;
+  };
+  zoneLabels?: { new: string; active: string; done: string };
   displayOptions?: {
     columnOrder?: number[];
     columnVisibility?: Record<number, boolean>;
@@ -111,6 +119,7 @@ export function loadConfig(): ConfigResponse {
       stateLabels: { ...defaults.stateLabels, ...(parsed.stateLabels ?? {}) },
       report: { ...defaults.report, ...(parsed.report ?? {}) },
       kitchenPhrases: { ...defaults.kitchenPhrases, ...(parsed.kitchenPhrases ?? {}) },
+      zoneLabels: { ...defaults.zoneLabels, ...(parsed.zoneLabels ?? {}) } as DashboardConfig['zoneLabels'],
       displayOptions: parsed.displayOptions ?? undefined,
     };
   } catch (err: any) {
@@ -141,28 +150,36 @@ function getDefaultSLAConfig(): SLAConfig[] {
 function getDefaultDashboardConfig(): DashboardConfig {
   return {
     pollingInterval: 30000,
-    title: 'Camtom Ticket Dashboard',
+    title: 'Panel de Soporte Camtom',
     teamMembers: [],
     displayOrder: [1, 2, 3, 4, 0],
     priorityLabels: {
-      1: { label: 'Urgent', color: 'var(--priority-urgent)', dotColor: '#D32F2F' },
-      2: { label: 'High', color: 'var(--priority-high)', dotColor: '#FF8C00' },
-      3: { label: 'Medium', color: 'var(--priority-medium)', dotColor: '#E0A82E' },
-      4: { label: 'Low', color: 'var(--priority-low)', dotColor: '#4CAF50' },
-      0: { label: 'No Priority', color: 'var(--priority-none)', dotColor: '#9E9E9E' },
+      1: { label: 'Urgente', color: 'var(--priority-urgent)', dotColor: '#D32F2F' },
+      2: { label: 'Alta', color: 'var(--priority-high)', dotColor: '#FF8C00' },
+      3: { label: 'Media', color: 'var(--priority-medium)', dotColor: '#E0A82E' },
+      4: { label: 'Baja', color: 'var(--priority-low)', dotColor: '#4CAF50' },
+      0: { label: 'Sin prioridad', color: 'var(--priority-none)', dotColor: '#9E9E9E' },
     },
     stateLabels: {
-      completed: { label: 'Done', icon: 'check' },
-      started: { label: 'Prep', icon: 'fork-knife' },
-      unstarted: { label: 'Order In', icon: 'edit' },
-      canceled: { label: "86'd", icon: 'x' },
-      triaged: { label: 'Triaged', icon: 'search' },
+      completed: { label: 'Listo', icon: 'check' },
+      started: { label: 'En prep', icon: 'fork-knife' },
+      unstarted: { label: 'Entró', icon: 'edit' },
+      canceled: { label: 'Cancelado', icon: 'x' },
+      triaged: { label: 'Triage', icon: 'search' },
     },
     report: { slaWindowHours: 24, enabled: true },
     kitchenPhrases: {
-      emptyState: 'No tickets — kitchen is quiet!',
-      warningTimer: 'Order is getting cold!',
-      breachedTimer: 'Order BURNED!',
+      emptyState: '¡Cocina limpia!',
+      emptyStateSub: 'No hay tickets pendientes.',
+      errorState: 'Perdimos la cocina',
+      errorStateSub: 'Sin conexión en tiempo real — mostrando lo último que vimos. Reintentando…',
+      warningTimer: '¡La orden se enfría!',
+      breachedTimer: '¡Orden QUEMADA!',
+    },
+    zoneLabels: {
+      new: 'Sin tomar',
+      active: 'En progreso',
+      done: 'Servidos hoy',
     },
   };
 }

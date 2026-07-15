@@ -27,14 +27,14 @@ export function GeneralTab({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
       <Section label="General">
-        <FieldRow label="Dashboard Title">
+        <FieldRow label="Título del panel">
           <input
             value={title}
             onChange={(e) => setOverride('title', e.target.value)}
             style={inputStyle}
           />
         </FieldRow>
-        <FieldRow label="SLA Window (hours)">
+        <FieldRow label="Ventana SLA (horas)">
           <input
             type="number"
             min={1}
@@ -46,7 +46,7 @@ export function GeneralTab({
         </FieldRow>
       </Section>
 
-      <Section label="Team Members">
+      <Section label="Integrantes">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {teamMembers.map((name, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -56,13 +56,13 @@ export function GeneralTab({
                 onClick={() => removeTeamMember(i)}
                 style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-display)' }}
               >
-                Remove
-              </Button>
+                Quitar
+</Button>
             </div>
           ))}
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
             <input
-              placeholder="Add team member..."
+              placeholder="Agregar integrante..."
               value={newMemberName}
               onChange={(e) => setNewMemberName(e.target.value)}
               onKeyDown={(e) => {
@@ -83,8 +83,8 @@ export function GeneralTab({
               }}
               style={{ padding: '4px 16px', fontSize: 'var(--text-sm)', letterSpacing: '0.05em' }}
             >
-              Add
-            </Button>
+              Agregar
+</Button>
           </div>
         </div>
       </Section>

@@ -17,8 +17,8 @@ const makeIssue = (overrides: Partial<Issue> & { id: string; priority: number })
 describe('FridayReport', () => {
   it('renders title and metric cards', () => {
     render(<FridayReport issues={[]} playSuccess={vi.fn()} config={null} />);
-    expect(screen.getByText('Friday Report')).toBeDefined();
-    expect(screen.getByText('Weekly Resolution Summary')).toBeDefined();
+    expect(screen.getByText('Reporte del viernes')).toBeDefined();
+    expect(screen.getByText('Resumen semanal de resolución')).toBeDefined();
   });
 
   it('shows N/A for metrics when no issues resolved', () => {
@@ -26,8 +26,8 @@ describe('FridayReport', () => {
     // Multiple elements show '0' — use getAllByText and verify at least one
     const zeroElements = screen.getAllByText(/^0$/);
     expect(zeroElements.length).toBeGreaterThanOrEqual(1);
-    // Two metric cards show N/A: SLA Compliance and Avg Resolution
-    const naElements = screen.getAllByText('N/A');
+    // Two metric cards show N/D: Cumplimiento SLA and Tiempo prom. de resolución
+    const naElements = screen.getAllByText('N/D');
     expect(naElements).toHaveLength(2);
   });
 
@@ -50,13 +50,13 @@ describe('FridayReport', () => {
     ];
 
     render(<FridayReport issues={issues} playSuccess={vi.fn()} config={null} />);
-    expect(screen.getByText('Team Performance')).toBeDefined();
+    expect(screen.getByText('Rendimiento del equipo')).toBeDefined();
     expect(screen.getByText('Alice')).toBeDefined();
   });
 
   it('shows priority breakdown section', () => {
     render(<FridayReport issues={[]} playSuccess={vi.fn()} config={null} />);
-    expect(screen.getByText('By Priority')).toBeDefined();
+    expect(screen.getByText('Por prioridad')).toBeDefined();
   });
 
   it('calls playSuccess on mount', () => {
@@ -72,7 +72,7 @@ describe('FridayReport', () => {
 
     render(<FridayReport issues={issues} playSuccess={vi.fn()} config={null} />);
     expect(screen.getByText('Alice')).toBeDefined();
-    expect(screen.getByText('Unassigned')).toBeDefined();
+    expect(screen.getByText('Sin asignar')).toBeDefined();
   });
 
   it('uses completedAt, not updatedAt, for the weekly window', () => {
@@ -89,8 +89,8 @@ describe('FridayReport', () => {
     ];
 
     render(<FridayReport issues={issues} playSuccess={vi.fn()} config={null} />);
-    // Nothing resolved this week -> both computed metrics show N/A (as in the empty case)
-    expect(screen.getAllByText('N/A')).toHaveLength(2);
+    // Nothing resolved this week -> both computed metrics show N/D (as in the empty case)
+    expect(screen.getAllByText('N/D')).toHaveLength(2);
   });
 
   it('shows correct SLA rate for completed issues', () => {

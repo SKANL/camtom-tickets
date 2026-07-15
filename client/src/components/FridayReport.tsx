@@ -53,7 +53,7 @@ export function FridayReport({ issues, playSuccess, config }: FridayReportProps)
     for (const name of TEAM_MEMBERS) {
       assigneeMap.set(name, { resolved: 0, breaches: 0 });
     }
-    assigneeMap.set('Unassigned', { resolved: 0, breaches: 0 });
+    assigneeMap.set('Sin asignar', { resolved: 0, breaches: 0 });
 
     for (const issue of weeklyResolved) {
       const created = new Date(issue.createdAt).getTime();
@@ -63,7 +63,7 @@ export function FridayReport({ issues, playSuccess, config }: FridayReportProps)
       if (isCompliant) slaCompliant++;
       totalResolutionMs += resolutionTime;
 
-      const name = issue.assignee?.name || 'Unassigned';
+      const name = issue.assignee?.name || 'Sin asignar';
       const stats = assigneeMap.get(name);
       if (stats) {
         stats.resolved += 1;
@@ -78,7 +78,7 @@ export function FridayReport({ issues, playSuccess, config }: FridayReportProps)
     const avgMinutes = totalResolved > 0 ? Math.round(totalResolutionMs / totalResolved / 60000) : 0;
     const avgTime = totalResolved > 0
       ? `${Math.floor(avgMinutes / 60)}h ${avgMinutes % 60}m`
-      : 'N/A';
+      : 'N/D';
 
     const teamStats: TeamMemberStats[] = Array.from(assigneeMap.entries())
       .map(([name, stats]) => ({ name, ...stats }))
@@ -118,7 +118,7 @@ export function FridayReport({ issues, playSuccess, config }: FridayReportProps)
             textShadow: '2px 2px 0 rgba(0,0,0,0.3)',
           }}
         >
-          <IconChart size={32} style={{ verticalAlign: 'middle', marginRight: 8 }} /> Friday Report
+          <IconChart size={32} style={{ verticalAlign: 'middle', marginRight: 8 }} /> Reporte del viernes
         </h1>
         <p
           style={{
@@ -127,7 +127,7 @@ export function FridayReport({ issues, playSuccess, config }: FridayReportProps)
             fontSize: 'var(--text-sm)',
           }}
         >
-          Weekly Resolution Summary
+          Resumen semanal de resolución
         </p>
       </div>
 
@@ -140,13 +140,13 @@ export function FridayReport({ issues, playSuccess, config }: FridayReportProps)
           flexWrap: 'wrap',
         }}
       >
-        <MetricCard label="Resolved" value={String(totalResolved)} color="var(--color-lettuce)" />
+        <MetricCard label="Resueltos" value={String(totalResolved)} color="var(--color-lettuce)" />
         <MetricCard
-          label="SLA Compliance"
-          value={slaRate !== null ? `${slaRate}%` : 'N/A'}
+          label="Cumplimiento SLA"
+          value={slaRate !== null ? `${slaRate}%` : 'N/D'}
           color={slaRate !== null && slaRate >= 80 ? 'var(--color-lettuce)' : 'var(--color-oil)'}
         />
-        <MetricCard label="Avg Resolution" value={avgTime} color="var(--color-oil)" />
+        <MetricCard label="Tiempo prom. de resolución" value={avgTime} color="var(--color-oil)" />
       </div>
 
       {/* Priority breakdown */}
@@ -166,13 +166,13 @@ export function FridayReport({ issues, playSuccess, config }: FridayReportProps)
             marginBottom: 'var(--space-md)',
           }}
         >
-          By Priority
+          Por prioridad
         </h3>
         <div style={{ display: 'flex', gap: 'var(--space-lg)', flexWrap: 'wrap' }}>
-          <PriorityStat icon={<IconFire size={20} />} label="Urgent" value={priorityBreakdown.urgent} color="var(--priority-urgent)" />
-          <PriorityStat icon={<IconFlash size={20} />} label="High" value={priorityBreakdown.high} color="var(--priority-high)" />
-          <PriorityStat icon={<IconClipboard size={20} />} label="Medium" value={priorityBreakdown.medium} color="var(--priority-medium)" />
-          <PriorityStat icon={<IconCheck size={20} />} label="Low/None" value={priorityBreakdown.low} color="var(--priority-low)" />
+          <PriorityStat icon={<IconFire size={20} />} label="Urgente" value={priorityBreakdown.urgent} color="var(--priority-urgent)" />
+          <PriorityStat icon={<IconFlash size={20} />} label="Alta" value={priorityBreakdown.high} color="var(--priority-high)" />
+          <PriorityStat icon={<IconClipboard size={20} />} label="Media" value={priorityBreakdown.medium} color="var(--priority-medium)" />
+          <PriorityStat icon={<IconCheck size={20} />} label="Baja/Sin" value={priorityBreakdown.low} color="var(--priority-low)" />
         </div>
       </div>
 
@@ -193,7 +193,7 @@ export function FridayReport({ issues, playSuccess, config }: FridayReportProps)
             marginBottom: 'var(--space-md)',
           }}
         >
-          <IconChefHat size={24} style={{ verticalAlign: 'middle', marginRight: 8 }} /> Team Performance
+          <IconChefHat size={24} style={{ verticalAlign: 'middle', marginRight: 8 }} /> Rendimiento del equipo
         </h3>
         <div
           style={{
@@ -209,10 +209,10 @@ export function FridayReport({ issues, playSuccess, config }: FridayReportProps)
             Chef
           </div>
           <div style={{ fontWeight: 700, color: 'var(--color-mustard)', textAlign: 'center', borderBottom: '2px solid rgba(255,255,255,0.2)', paddingBottom: 'var(--space-sm)' }}>
-            Resolved
+            Resueltos
           </div>
           <div style={{ fontWeight: 700, color: 'var(--color-mustard)', textAlign: 'center', borderBottom: '2px solid rgba(255,255,255,0.2)', paddingBottom: 'var(--space-sm)' }}>
-            Breaches
+            Incumplimientos
           </div>
 
           {/* Rows */}
@@ -222,7 +222,7 @@ export function FridayReport({ issues, playSuccess, config }: FridayReportProps)
                 style={{
                   padding: 'var(--space-sm) 0',
                   borderBottom: '1px solid rgba(255,255,255,0.05)',
-                  color: member.name === 'Unassigned' ? 'rgba(255,255,255,0.4)' : 'var(--color-mayo)',
+                  color: member.name === 'Sin asignar' ? 'rgba(255,255,255,0.4)' : 'var(--color-mayo)',
                 }}
               >
                 {member.name}

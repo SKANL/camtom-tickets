@@ -10,18 +10,18 @@ interface SoundsTabProps {
 }
 
 const SOUNDS = [
-  { name: 'sparkle', label: 'New Urgent' },
-  { name: 'tick', label: 'Warning' },
-  { name: 'press', label: 'Breach' },
-  { name: 'success', label: 'Success' },
-  { name: 'chime', label: 'Chime' },
+  { name: 'sparkle', label: 'Nuevo urgente' },
+  { name: 'tick', label: 'Advertencia' },
+  { name: 'press', label: 'Incumplimiento' },
+  { name: 'success', label: 'Éxito' },
+  { name: 'chime', label: 'Campana' },
 ];
 
 export function SoundsTab({ previewVolume, setPreviewVolume, handlePreviewSound }: SoundsTabProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
-      <Section label="Volume">
-        <FieldRow label="Preview Volume">
+      <Section label="Volumen">
+        <FieldRow label="Volumen de prueba">
           <input
             type="range"
             min={0}
@@ -37,7 +37,7 @@ export function SoundsTab({ previewVolume, setPreviewVolume, handlePreviewSound 
         </FieldRow>
       </Section>
 
-      <Section label="Sound Previews">
+      <Section label="Prueba de sonidos">
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {SOUNDS.map((snd) => (
             <Button

@@ -1,19 +1,21 @@
 import React from 'react';
-import { PriorityLabelConfig, KitchenPhrases } from '@camtom/shared';
+import { PriorityLabelConfig, KitchenPhrases, ZoneLabels } from '@camtom/shared';
 import { PRIORITY_LEVELS, PRIORITY_BY_LEVEL } from '../../lib/priorities';
 import { Section, FieldRow, inputStyle } from './layout';
 
 interface LabelsTabProps {
   priorityLabels: Record<number, Partial<PriorityLabelConfig>>;
   kitchenPhrases: KitchenPhrases;
+  zoneLabels: ZoneLabels;
   setPriorityOverride: (priority: number, field: keyof PriorityLabelConfig, value: string) => void;
   setPhrase: (key: keyof KitchenPhrases, value: string) => void;
+  setZone: (key: keyof ZoneLabels, value: string) => void;
 }
 
-export function LabelsTab({ priorityLabels, kitchenPhrases, setPriorityOverride, setPhrase }: LabelsTabProps) {
+export function LabelsTab({ priorityLabels, kitchenPhrases, zoneLabels, setPriorityOverride, setPhrase, setZone }: LabelsTabProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
-      <Section label="Priority Labels & Colors">
+      <Section label="Etiquetas de prioridad y colores">
         {PRIORITY_LEVELS.map((pk) => {
           const pl = priorityLabels[pk] || { label: PRIORITY_BY_LEVEL[pk].name, color: '#888', dotColor: '#888' };
           return (
@@ -24,7 +26,7 @@ export function LabelsTab({ priorityLabels, kitchenPhrases, setPriorityOverride,
               <input
                 value={pl.label ?? ''}
                 onChange={(e) => setPriorityOverride(pk, 'label', e.target.value)}
-                placeholder="Label"
+                placeholder="Etiqueta"
                 style={{ ...inputStyle, width: 120 }}
               />
               <input
@@ -36,7 +38,7 @@ export function LabelsTab({ priorityLabels, kitchenPhrases, setPriorityOverride,
               <input
                 value={pl.color ?? ''}
                 onChange={(e) => setPriorityOverride(pk, 'color', e.target.value)}
-                placeholder="CSS var"
+                placeholder="Variable CSS"
                 style={{ ...inputStyle, width: 120, fontFamily: 'monospace', fontSize: 'var(--text-xs)' }}
               />
               <div style={{ width: 24, height: 24, borderRadius: '50%', background: pl.dotColor ?? '#888', flexShrink: 0 }} />
@@ -45,27 +47,36 @@ export function LabelsTab({ priorityLabels, kitchenPhrases, setPriorityOverride,
         })}
       </Section>
 
-      <Section label="Kitchen Phrases">
-        <FieldRow label="Empty state">
-          <input
-            value={kitchenPhrases.emptyState ?? ''}
-            onChange={(e) => setPhrase('emptyState', e.target.value)}
-            style={inputStyle}
-          />
+      <Section label="Títulos de zonas">
+        <FieldRow label="Sin tomar">
+          <input value={zoneLabels.new ?? ''} onChange={(e) => setZone('new', e.target.value)} style={inputStyle} />
         </FieldRow>
-        <FieldRow label="Warning timer">
-          <input
-            value={kitchenPhrases.warningTimer ?? ''}
-            onChange={(e) => setPhrase('warningTimer', e.target.value)}
-            style={inputStyle}
-          />
+        <FieldRow label="En progreso">
+          <input value={zoneLabels.active ?? ''} onChange={(e) => setZone('active', e.target.value)} style={inputStyle} />
         </FieldRow>
-        <FieldRow label="Breached timer">
-          <input
-            value={kitchenPhrases.breachedTimer ?? ''}
-            onChange={(e) => setPhrase('breachedTimer', e.target.value)}
-            style={inputStyle}
-          />
+        <FieldRow label="Servidos hoy">
+          <input value={zoneLabels.done ?? ''} onChange={(e) => setZone('done', e.target.value)} style={inputStyle} />
+        </FieldRow>
+      </Section>
+
+      <Section label="Frases de cocina">
+        <FieldRow label="Vacío — título">
+          <input value={kitchenPhrases.emptyState ?? ''} onChange={(e) => setPhrase('emptyState', e.target.value)} style={inputStyle} />
+        </FieldRow>
+        <FieldRow label="Vacío — subtítulo">
+          <input value={kitchenPhrases.emptyStateSub ?? ''} onChange={(e) => setPhrase('emptyStateSub', e.target.value)} style={inputStyle} />
+        </FieldRow>
+        <FieldRow label="Error — título">
+          <input value={kitchenPhrases.errorState ?? ''} onChange={(e) => setPhrase('errorState', e.target.value)} style={inputStyle} />
+        </FieldRow>
+        <FieldRow label="Error — subtítulo">
+          <input value={kitchenPhrases.errorStateSub ?? ''} onChange={(e) => setPhrase('errorStateSub', e.target.value)} style={inputStyle} />
+        </FieldRow>
+        <FieldRow label="Timer en aviso">
+          <input value={kitchenPhrases.warningTimer ?? ''} onChange={(e) => setPhrase('warningTimer', e.target.value)} style={inputStyle} />
+        </FieldRow>
+        <FieldRow label="Timer vencido">
+          <input value={kitchenPhrases.breachedTimer ?? ''} onChange={(e) => setPhrase('breachedTimer', e.target.value)} style={inputStyle} />
         </FieldRow>
       </Section>
     </div>
