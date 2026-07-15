@@ -18,12 +18,18 @@ export interface Issue {
   estimate?: number;
 }
 
+export interface SLAWarningThresholds {
+  warming: number;  // 0.0–1.0: over this pct remaining → FRESH (default 0.6)
+  heating: number;  // below this → HEATING (default 0.3)
+  critical: number; // below this → CRITICAL (default 0.1)
+}
+
 export interface SLAConfig {
   id: string;
   label: string;
   applicablePriorities: number[];
   maxMinutes: number;
-  warningThreshold: number;
+  warningThresholds: SLAWarningThresholds;
 }
 
 export interface PriorityLabelConfig {
@@ -64,15 +70,12 @@ export interface ConfigResponse {
   version: string;
 }
 
-export interface SSEEvent {
-  type: 'delta' | 'heartbeat';
-  data: {
-    added?: Issue[];
-    updated?: Issue[];
-    removed?: string[];
-    serverTime: number;
-    assignmentTimestamps?: Record<string, string>;
-  };
+export interface SSEDelta {
+  added?: Issue[];
+  updated?: Issue[];
+  removed?: string[];
+  serverTime: number;
+  labelTimestamps?: Record<string, string>;
 }
 
 export interface SelectOption {
@@ -107,12 +110,12 @@ export interface FilterState {
   excludeStates: string[];
 }
 
-export type TimerState = 'OK' | 'WARNING' | 'BREACHED';
+export type TimerState = 'FRESH' | 'WARMING' | 'HEATING' | 'CRITICAL' | 'EXPIRED';
 
 export interface TimerInfo {
   deadline: number;
   remaining: number;
   state: TimerState;
   slaId: string;
-  maxMinutes?: number;
+  maxMinutes: number;
 }

@@ -8,10 +8,12 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
+    "register:webhook": "ts-node-dev --transpile-only scripts/register-webhook.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@camtom/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.110.5",
     "chokidar": "^3.6.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",

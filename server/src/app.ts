@@ -7,15 +7,14 @@ if (!process.env.VERCEL) {
   dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 }
 
-import express, { Application } from 'express';
+import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import { loadConfig } from './config';
-import { startPolling } from './poller';
-import { ensureLabel } from './linear-client';
-import issuesRouter from './routes/issues';
+import { getRateLimitState } from './linear-client';
 import configRouter from './routes/config';
-import eventsRouter from './routes/events';
 import metadataRouter from './routes/metadata';
+import webhooksRouter from './routes/webhooks';
+import reconcileRouter from './routes/reconcile';
 
 export function createApp(): Application {
   const app: Application = express();
@@ -24,31 +23,28 @@ export function createApp(): Application {
     ? process.env.CORS_ORIGIN.split(',')
     : ['http://localhost:5173', 'http://localhost:4173', 'http://localhost:3001'];
 
-  // Middleware
   app.use(cors({ origin: corsOrigin, credentials: true }));
-  app.use(express.json());
 
-  // Health endpoint
+  // JSON parser that preserves the raw body for webhook signature verification.
+  app.use(
+    express.json({
+      verify: (req: Request, _res: Response, buf: Buffer) => {
+        (req as any).rawBody = buf.toString('utf8');
+      },
+    }),
+  );
+
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', uptime: process.uptime() });
+    res.json({ status: 'ok', uptime: process.uptime(), rateLimit: getRateLimitState() });
   });
 
-  // Routes
-  app.use(issuesRouter);
   app.use(configRouter);
-  app.use(eventsRouter);
   app.use(metadataRouter);
+  app.use(webhooksRouter);
+  app.use(reconcileRouter);
 
-  // In production, serve the client SPA build
-  if (process.env.NODE_ENV === 'production') {
-    const clientDist = path.resolve(__dirname, '../../client/dist');
-    app.use(express.static(clientDist));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.join(clientDist, 'index.html'));
-    });
-  }
+  // In production the client is served as static files by Vercel; nothing to do here.
 
-  // Error handling middleware
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error('[server] Unhandled error:', err.message);
     res.status(500).json({
@@ -60,15 +56,8 @@ export function createApp(): Application {
   return app;
 }
 
+/** Cheap cold-start warmup: load config into the module cache. */
 export function initServer(): void {
   const config = loadConfig();
   console.log(`[server] Config loaded: ${config.slas.length} SLAs, version ${config.version}`);
-
-  // Start polling (works in serverless, runs on cold start)
-  startPolling();
-
-  // Non-blocking label creation probe
-  ensureLabel('ticket').catch((err) => {
-    console.warn('[server] Failed to ensure ticket label:', err.message);
-  });
 }

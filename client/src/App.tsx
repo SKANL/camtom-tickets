@@ -11,6 +11,21 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { FilterBar } from './components/FilterBar';
 import { ConfigResponse, DashboardConfig, FilterState, DisplayOptions } from '@camtom/shared';
 
+const FILTER_STORAGE_KEY = 'camtom-filter-state';
+
+const EMPTY_FILTER: FilterState = {
+  projects: [], assignees: [], states: [], labels: [], priorities: [], textSearch: '', excludeStates: [],
+};
+
+function loadSavedFilter(): FilterState | null {
+  try {
+    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+    if (raw) return { ...EMPTY_FILTER, ...JSON.parse(raw) };
+  } catch {
+    // ignore malformed storage
+  }
+  return null;
+}
 
 interface SettingsOverrides {
   title?: string;
@@ -62,26 +77,28 @@ function App() {
   });
   const { config: serverConfig } = useConfig();
   const config = mergeConfig(serverConfig, settingsOverrides);
-  const { issues, loading } = useIssues();
+  const { issues, loading, error } = useIssues();
   const timers = useSLA(issues, config?.slas);
   const sound = useSound();
   const prevIssuesRef = useRef<Set<string>>(new Set());
   const alertedTimersRef = useRef<Set<string>>(new Set());
   const { catalog: metadata } = useMetadata();
 
-  // Filter state — Phase 1: all empty, excludeStates initialized
-  const [filter, setFilter] = useState<FilterState>({
-    projects: [],
-    assignees: [],
-    states: [],
-    labels: [],
-    priorities: [],
-    textSearch: '',
-    excludeStates: [],
-  });
+  // Filter state — App is the single owner. Restored from localStorage; persisted below.
+  const [filter, setFilter] = useState<FilterState>(() => loadSavedFilter() ?? EMPTY_FILTER);
 
-  // Phase 2: resolve defaults from metadata once it's available
-  const defaultsAppliedRef = useRef(false);
+  // Metadata-derived defaults apply once, and only on a fresh visit (nothing restored),
+  // so they never fight a filter the user has already customized.
+  const defaultsAppliedRef = useRef(loadSavedFilter() !== null);
+
+  // Persist the filter so it survives reloads (single writer — no FilterBar race).
+  useEffect(() => {
+    try {
+      localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filter));
+    } catch {
+      // ignore full/unavailable storage
+    }
+  }, [filter]);
 
   useEffect(() => {
     if (!metadata || defaultsAppliedRef.current) return;
@@ -93,12 +110,21 @@ function App() {
       s.name.toLowerCase().includes('pull request'),
     );
     const excludeIds = [doneState?.id, prState?.id].filter(Boolean) as string[];
+
+    // Default active states: In Progress, Backlog, Todo (across all teams/projects)
+    const activeNames = ['in progress', 'backlog', 'todo', 'to-do'];
+    const activeIds = metadata.workflowStates
+      .filter((s) => activeNames.includes(s.name.toLowerCase()))
+      .map((s) => s.id);
+
     const ticketLabel = metadata.labels.find(
       (l) => l.name.toLowerCase() === 'ticket',
     );
 
     setFilter((prev) => ({
       ...prev,
+      states:
+        prev.states.length > 0 ? prev.states : activeIds,
       excludeStates:
         prev.excludeStates.length > 0 ? prev.excludeStates : excludeIds,
       labels:
@@ -166,11 +192,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    let cleanup: (() => void) | undefined;
-    import('cuelume').then((mod) => {
-      mod.bind();
-    }).catch(() => {});
-    return () => { cleanup?.(); };
+    import('cuelume').then((mod) => mod.bind()).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -181,12 +203,10 @@ function App() {
     // Clean up alerted states that no longer apply
     const activeKeys = new Set<string>();
     for (const issue of issues) {
-      const issueTimers = timers.get(issue.id);
-      if (!issueTimers) continue;
-      for (const t of issueTimers) {
-        if (t.state !== 'OK') {
-          activeKeys.add(`${issue.id}:${t.slaId}:${t.state}`);
-        }
+      const t = timers.get(issue.id);
+      if (!t) continue;
+      if (t.state === 'CRITICAL' || t.state === 'EXPIRED') {
+        activeKeys.add(`${issue.id}:${t.state}`);
       }
     }
     // Remove stale entries from alertedTimers
@@ -200,16 +220,14 @@ function App() {
       const newUrgent = issues.filter((i) => i.priority === 1 && !prevIds.has(i.id));
       if (newUrgent.length > 0) sound.playNewUrgent();
       for (const issue of issues) {
-        const issueTimers = timers.get(issue.id);
-        if (!issueTimers) continue;
-        // Play sound once per issue per timer state change
-        for (const t of issueTimers) {
-          const key = `${issue.id}:${t.slaId}:${t.state}`;
-          if (alertedTimersRef.current.has(key)) continue;
-          alertedTimersRef.current.add(key);
-          if (t.state === 'BREACHED') sound.playBreach();
-          else if (t.state === 'WARNING') sound.playWarning();
-        }
+        const t = timers.get(issue.id);
+        if (!t) continue;
+        // Play sound once per timer state change
+        const key = `${issue.id}:${t.state}`;
+        if (alertedTimersRef.current.has(key)) continue;
+        alertedTimersRef.current.add(key);
+        if (t.state === 'EXPIRED') sound.playBreach();
+        else if (t.state === 'CRITICAL') sound.playWarning();
       }
     }
     prevIssuesRef.current = currentIds;
@@ -231,6 +249,22 @@ function App() {
         config={config}
         onOpenSettings={() => setShowSettings(true)}
       />
+      {error && (
+        <div
+          role="alert"
+          style={{
+            background: 'var(--color-ketchup)',
+            color: '#fff',
+            padding: '6px var(--space-lg)',
+            fontFamily: 'var(--font-body)',
+            fontSize: 'var(--text-sm)',
+            textAlign: 'center',
+            flexShrink: 0,
+          }}
+        >
+          Connection issue — showing last known data. {error}
+        </div>
+      )}
       {showReport ? (
         <FridayReport issues={issues} playSuccess={sound.playSuccess} config={config} />
       ) : (

@@ -15,12 +15,20 @@ function getConfigDir(): string {
 
 const CONFIG_DIR = getConfigDir();
 
+interface RawSLAWarningThresholds {
+  warming?: number;
+  heating?: number;
+  critical?: number;
+}
+
 interface RawSLAEntry {
   id: string;
   label: string;
   applicablePriorities: number[];
   maxMinutes: number;
-  warningThreshold: number;
+  warningThresholds?: RawSLAWarningThresholds;
+  /** @deprecated use warningThresholds instead */
+  warningThreshold?: number;
 }
 
 interface RawSLAFile {
@@ -72,12 +80,16 @@ export function loadConfig(): ConfigResponse {
     if (!parsed || !Array.isArray(parsed.slas)) {
       throw new Error('Invalid SLA YAML: missing "slas" array');
     }
-    slas = parsed.slas.map((entry) => ({
+    slas = parsed.slas.map((entry): SLAConfig => ({
       id: entry.id,
       label: entry.label,
       applicablePriorities: entry.applicablePriorities,
       maxMinutes: entry.maxMinutes,
-      warningThreshold: entry.warningThreshold,
+      warningThresholds: {
+        warming: entry.warningThresholds?.warming ?? entry.warningThreshold ?? 0.6,
+        heating: entry.warningThresholds?.heating ?? entry.warningThreshold ?? 0.3,
+        critical: entry.warningThresholds?.critical ?? entry.warningThreshold ?? 0.1,
+      },
     }));
   } catch (err: any) {
     console.error(`[config] Failed to load SLA config: ${err.message}`);
@@ -119,11 +131,13 @@ export function loadConfig(): ConfigResponse {
 
 function getDefaultSLAConfig(): SLAConfig[] {
   return [
-    { id: 'responder_usuario', label: 'Responder al usuario', applicablePriorities: [1, 2], maxMinutes: 5, warningThreshold: 0.2 },
-    { id: 'recuperar_usuario', label: 'Recuperar usuario', applicablePriorities: [1, 2, 3], maxMinutes: 10, warningThreshold: 0.2 },
-    { id: 'avisar_equipo', label: 'Avisar al equipo', applicablePriorities: [1], maxMinutes: 10, warningThreshold: 0.2 },
-    { id: 'resolver_iniciar', label: 'Resolver — Iniciar', applicablePriorities: [1, 2], maxMinutes: 10, warningThreshold: 0.2 },
-    { id: 'resolver_definitiva', label: 'Resolver — Respuesta definitiva', applicablePriorities: [1, 2], maxMinutes: 30, warningThreshold: 0.2 },
+    {
+      id: 'ticket_timer',
+      label: 'Ticket Timer',
+      applicablePriorities: [0, 1, 2, 3, 4],
+      maxMinutes: 30,
+      warningThresholds: { warming: 0.6, heating: 0.3, critical: 0.1 },
+    },
   ];
 }
 
@@ -136,7 +150,7 @@ function getDefaultDashboardConfig(): DashboardConfig {
     priorityLabels: {
       1: { label: 'Urgent', color: 'var(--priority-urgent)', dotColor: '#D32F2F' },
       2: { label: 'High', color: 'var(--priority-high)', dotColor: '#FF8C00' },
-      3: { label: 'Medium', color: 'var(--priority-medium)', dotColor: '#3B82F6' },
+      3: { label: 'Medium', color: 'var(--priority-medium)', dotColor: '#E0A82E' },
       4: { label: 'Low', color: 'var(--priority-low)', dotColor: '#4CAF50' },
       0: { label: 'No Priority', color: 'var(--priority-none)', dotColor: '#9E9E9E' },
     },

@@ -6,7 +6,7 @@ import { priorityIcons } from './Icons';
 
 interface DashboardProps {
   issues: Issue[];
-  timers: Map<string, TimerInfo[]>;
+  timers: Map<string, TimerInfo>;
   loading: boolean;
   config: ConfigResponse | null;
 }
@@ -44,9 +44,13 @@ function LoadingSkeleton() {
 export function Dashboard({ issues, timers, loading, config }: DashboardProps) {
   const displayOrder = config?.dashboard?.displayOrder ?? [1, 2, 3, 4, 0];
   const priorityLabels = config?.dashboard?.priorityLabels ?? {};
+  const { columnOrder, columnVisibility } = config?.dashboard?.displayOptions ?? {};
 
-  const buckets: PriorityBucket[] = displayOrder
+  const order = columnOrder && columnOrder.length > 0 ? columnOrder : displayOrder;
+
+  const buckets: PriorityBucket[] = order
     .filter((p) => priorityLabels[p])
+    .filter((p) => columnVisibility?.[p] !== false) // hidden only when explicitly false
     .map((priority) => {
       const pl = priorityLabels[priority];
       const IconComp = priorityIcons[priority];

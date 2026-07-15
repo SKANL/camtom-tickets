@@ -1,0 +1,17 @@
+name: Reconcile tickets
+
+# Safety net for missed Linear webhooks. The webhook is the primary, instant path;
+# this pulls anything the webhook missed. Every 5 minutes (GitHub's minimum).
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping reconcile endpoint
+        run: |
+          curl -fsS -X GET "${{ secrets.RECONCILE_URL }}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

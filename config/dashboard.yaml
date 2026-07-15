@@ -24,7 +24,7 @@ priorityLabels:
     label: High
   '3':
     color: var(--priority-medium)
-    dotColor: '#3B82F6'
+    dotColor: '#E0A82E'
     label: Medium
   '4':
     color: var(--priority-low)

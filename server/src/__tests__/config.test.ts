@@ -58,9 +58,9 @@ title: "Test Dashboard"
     const { loadConfig } = await import('../config');
     const config = loadConfig();
 
-    // Should fall back to defaults
-    expect(config.slas).toHaveLength(5);
-    expect(config.slas[0].id).toBe('responder_usuario');
+    // Should fall back to defaults (single ticket timer)
+    expect(config.slas).toHaveLength(1);
+    expect(config.slas[0].id).toBe('ticket_timer');
     expect(config.dashboard.pollingInterval).toBe(30000);
   });
 

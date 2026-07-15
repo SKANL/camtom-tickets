@@ -8,7 +8,7 @@ interface PriorityGroupProps {
   icon: React.ReactNode;
   color: string;
   issues: Issue[];
-  timers: Map<string, TimerInfo[]>;
+  timers: Map<string, TimerInfo>;
   collapsed?: boolean;
   config?: ConfigResponse | null;
 }
@@ -21,7 +21,7 @@ export function PriorityGroup({ label, icon, color, issues, timers, collapsed, c
   const gaugeColors: Record<string, string> = {
     '1': 'var(--color-ketchup)',
     '2': 'var(--color-oil)',
-    '3': '#3B82F6',
+    '3': '#E0A82E',
     '4': 'var(--color-lettuce)',
     '0': '#9E9E9E',
   };
@@ -76,7 +76,7 @@ export function PriorityGroup({ label, icon, color, issues, timers, collapsed, c
             <TicketCard
               key={issue.id}
               issue={issue}
-              timers={timers.get(issue.id)}
+              timer={timers.get(issue.id)}
               config={config}
             />
           ))}

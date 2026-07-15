@@ -1,12 +1,13 @@
 export type {
   Issue,
   SLAConfig,
+  SLAWarningThresholds,
   PriorityLabelConfig,
   StateLabelConfig,
   KitchenPhrases,
   DashboardConfig,
   ConfigResponse,
-  SSEEvent,
+  SSEDelta,
   TimerState,
   TimerInfo,
   SelectOption,
@@ -14,3 +15,6 @@ export type {
   DisplayOptions,
   FilterState,
 } from './types';
+
+export type { TicketRow } from './tickets';
+export { rowToIssue } from './tickets';

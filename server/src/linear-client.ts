@@ -152,7 +152,16 @@ async function executeGraphQL(
         }
       }
 
+      // Track rate limit headers from every response
+      updateRateLimit(response.headers);
+
       const body = await response.json();
+
+      if (rateLimitState.remaining < rateLimitState.limit * 0.1) {
+        console.warn(
+          `[linear-client] Rate limit running low: ${rateLimitState.remaining}/${rateLimitState.limit}`,
+        );
+      }
 
       if (body.errors) {
         const isRateLimited = (body.errors as LinearApiError[]).some(
@@ -222,15 +231,56 @@ function mapIssue(node: LinearIssueNode): Issue {
 }
 
 export async function fetchAllIssues(): Promise<Issue[]> {
+  return fetchIssuesSince(null);
+}
+
+/**
+ * Fetch issues updated since a given timestamp.
+ *
+ * @param since ISO timestamp string, or null to fetch all issues (cold start).
+ * When null, fetches everything via pagination.
+ * When set, only fetches issues where updatedAt >= since (1-2 pages max).
+ */
+export async function fetchIssuesSince(since: string | null): Promise<Issue[]> {
   const teamId = getTeamId();
   const allIssues: Issue[] = [];
   let cursor: string | null = null;
   let hasMore = true;
 
+  const filter: any = { team: { id: { eq: teamId } } };
+  if (since) {
+    filter.updatedAt = { gte: since };
+  }
+
+  const query = `
+  query IssuesSince($filter: IssueFilter, $first: Int!, $after: String) {
+    issues(filter: $filter, orderBy: updatedAt, first: $first, after: $after) {
+      nodes {
+        id
+        identifier
+        title
+        description
+        priority
+        priorityLabel
+        createdAt
+        updatedAt
+        dueDate
+        assignee { id name email }
+        state { id name type }
+        labels { nodes { id name color } }
+        project { id name }
+        team { id name }
+        cycle { id name }
+        estimate
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }`;
+
   while (hasMore) {
     const data: { issues: LinearIssuesResponse } = await executeGraphQL(
-      ISSUES_QUERY,
-      { teamId, first: 50, after: cursor },
+      query,
+      { filter, first: 250, after: cursor },
     );
 
     const issues = data.issues.nodes.map(mapIssue);
@@ -238,6 +288,11 @@ export async function fetchAllIssues(): Promise<Issue[]> {
 
     hasMore = data.issues.pageInfo.hasNextPage;
     cursor = data.issues.pageInfo.endCursor;
+
+    // Safety: if fetching the full set and we got fewer than 250, we're done
+    if (!since && issues.length < 250) {
+      hasMore = false;
+    }
   }
 
   return allIssues;
@@ -351,4 +406,124 @@ export async function ensureLabel(name: string): Promise<boolean> {
   }
   // 2. Create the label
   return await createLabel(name);
+}
+
+// ---- Rate Limit Tracking ----
+
+interface RateLimitState {
+  limit: number;
+  remaining: number;
+  resetAt: number; // epoch ms
+  lastChecked: number; // epoch ms
+}
+
+let rateLimitState: RateLimitState = {
+  limit: 5000,
+  remaining: 5000,
+  resetAt: 0,
+  lastChecked: 0,
+};
+
+/**
+ * Update rate limit state from response headers.
+ * Linear returns: X-RateLimit-Requests-Limit, X-RateLimit-Requests-Remaining,
+ * X-RateLimit-Requests-Reset (UTC epoch ms).
+ */
+function updateRateLimit(headers: Headers): void {
+  const limit = headers.get('x-ratelimit-requests-limit');
+  const remaining = headers.get('x-ratelimit-requests-remaining');
+  const reset = headers.get('x-ratelimit-requests-reset');
+
+  if (limit) rateLimitState.limit = parseInt(limit, 10);
+  if (remaining !== null) rateLimitState.remaining = parseInt(remaining, 10);
+  if (reset) rateLimitState.resetAt = parseInt(reset, 10);
+  rateLimitState.lastChecked = Date.now();
+}
+
+/** Get current rate limit state snapshot. */
+export function getRateLimitState(): RateLimitState {
+  return { ...rateLimitState };
+}
+
+/** Check if we're running low on quota and should back off. */
+export function isRateLimitLow(thresholdPct: number = 0.1): boolean {
+  if (rateLimitState.remaining <= 0) return true;
+  return rateLimitState.remaining / rateLimitState.limit < thresholdPct;
+}
+
+// ---- Webhook Management ----
+
+const WEBHOOKS_QUERY = `
+query Webhooks {
+  webhooks {
+    nodes { id url enabled resourceTypes }
+  }
+}`;
+
+const WEBHOOK_CREATE_MUTATION = `
+mutation WebhookCreate($url: String!, $resourceTypes: [String!]!) {
+  webhookCreate(input: { url: $url, allPublicTeams: true, resourceTypes: $resourceTypes }) {
+    success
+    webhook { id url enabled }
+  }
+}`;
+
+const WEBHOOK_DELETE_MUTATION = `
+mutation WebhookDelete($id: String!) {
+  webhookDelete(id: $id) {
+    success
+  }
+}`;
+
+interface WebhookInfo {
+  id: string;
+  url: string;
+  enabled: boolean;
+  resourceTypes: string[];
+}
+
+export async function listWebhooks(): Promise<WebhookInfo[]> {
+  const data = await executeGraphQL(WEBHOOKS_QUERY, {});
+  return data.webhooks.nodes.map((n: any) => ({
+    id: n.id,
+    url: n.url,
+    enabled: n.enabled,
+    resourceTypes: n.resourceTypes,
+  }));
+}
+
+/**
+ * Register a Linear webhook for Issue events.
+ * Skips if a webhook for this URL already exists.
+ */
+export async function registerWebhook(url: string): Promise<boolean> {
+  // Check existing webhooks to avoid duplicates
+  const existing = await listWebhooks();
+  const match = existing.find((w) => w.url === url && w.enabled);
+  if (match) {
+    console.log(`[linear-client] Webhook already exists for ${url} (id: ${match.id})`);
+    return true;
+  }
+
+  console.log(`[linear-client] Registering webhook for ${url}...`);
+  const data = await executeGraphQL(WEBHOOK_CREATE_MUTATION, {
+    url,
+    resourceTypes: ['Issue'],
+  });
+
+  if (data.webhookCreate.success) {
+    console.log(`[linear-client] Webhook registered: ${data.webhookCreate.webhook.id}`);
+    return true;
+  }
+
+  console.error('[linear-client] Failed to register webhook');
+  return false;
+}
+
+/**
+ * Delete a webhook by ID.
+ */
+export async function deleteWebhook(id: string): Promise<boolean> {
+  const data = await executeGraphQL(WEBHOOK_DELETE_MUTATION, { id });
+  return data.webhookDelete.success === true;
 }

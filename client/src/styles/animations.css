@@ -227,3 +227,66 @@
 .urgent-pulse {
   animation: urgent-pulse 1.5s ease-in-out infinite;
 }
+
+/* ---- 5-state timer animations ---- */
+
+/* WARMING — slow, subtle pulse */
+@keyframes pulse-warming {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.03); opacity: 0.85; }
+}
+.pulse-warming {
+  animation: pulse-warming 2s ease-in-out infinite;
+}
+
+/* HEATING — medium pulse, faster */
+@keyframes pulse-heating {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.06); opacity: 0.75; }
+}
+.pulse-heating {
+  animation: pulse-heating 1.2s ease-in-out infinite;
+}
+
+/* CRITICAL — fast pulse + shake */
+@keyframes pulse-critical {
+  0%, 100% { transform: scale(1) translateX(0); }
+  25% { transform: scale(1.08) translateX(-2px); }
+  50% { transform: scale(1.08) translateX(2px); opacity: 0.7; }
+  75% { transform: scale(1.08) translateX(-1px); }
+}
+.pulse-critical {
+  animation: pulse-critical 0.6s ease-in-out infinite;
+}
+
+/* EXPIRED — slow burning glow */
+@keyframes expired-burn {
+  0%, 100% {
+    filter: brightness(1);
+    opacity: 1;
+  }
+  50% {
+    filter: brightness(1.3);
+    opacity: 0.85;
+  }
+}
+.expired-burn {
+  animation: expired-burn 1.5s ease-in-out infinite;
+}
+
+/* Card-level pulses for HEATING and CRITICAL */
+@keyframes ticket-heating-pulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(255, 152, 0, 0.3); }
+  50% { box-shadow: 0 0 16px rgba(255, 152, 0, 0.5); }
+}
+.ticket-heating-pulse {
+  animation: ticket-heating-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes ticket-critical-pulse {
+  0%, 100% { box-shadow: 0 0 6px rgba(244, 67, 54, 0.4); }
+  50% { box-shadow: 0 0 24px rgba(244, 67, 54, 0.7); }
+}
+.ticket-critical-pulse {
+  animation: ticket-critical-pulse 0.8s ease-in-out infinite;
+}

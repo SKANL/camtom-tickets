@@ -4,8 +4,13 @@ import { useSLA } from '../useSLA';
 import { Issue, SLAConfig } from '@camtom/shared';
 
 const mockSLAConfig: SLAConfig[] = [
-  { id: 'urgent_sla', label: 'Urgent SLA', applicablePriorities: [1], maxMinutes: 5, warningThreshold: 0.2 },
-  { id: 'standard_sla', label: 'Standard SLA', applicablePriorities: [2, 3], maxMinutes: 10, warningThreshold: 0.2 },
+  {
+    id: 'ticket_timer',
+    label: 'Ticket Timer',
+    applicablePriorities: [1, 2, 3],
+    maxMinutes: 5,
+    warningThresholds: { warming: 0.6, heating: 0.3, critical: 0.1 },
+  },
 ];
 
 const makeIssue = (overrides: Partial<Issue> & { id: string; priority: Issue['priority'] }): Issue => ({
@@ -29,72 +34,77 @@ describe('useSLA', () => {
     vi.useRealTimers();
   });
 
-  it('computes timer info for each issue', () => {
+  it('computes timer info only for issues with ticket label', () => {
     const issues: Issue[] = [
-      makeIssue({ id: '1', priority: 1 }),
-      makeIssue({ id: '2', priority: 2 }),
+      makeIssue({ id: '1', priority: 1, labels: { nodes: [{ id: 'l1', name: 'ticket' }] } }),
+      makeIssue({ id: '2', priority: 2 }), // no ticket label
     ];
 
     const { result } = renderHook(() => useSLA(issues, mockSLAConfig));
 
-    expect(result.current.size).toBe(2);
+    // Only issue with ticket label gets a timer
+    expect(result.current.size).toBe(1);
     expect(result.current.has('1')).toBe(true);
-    expect(result.current.has('2')).toBe(true);
+    expect(result.current.has('2')).toBe(false);
   });
 
-  it('returns OK state for issues within SLA', () => {
+  it('returns FRESH state for issues within SLA', () => {
     const issues: Issue[] = [
-      makeIssue({ id: '1', priority: 1 }), // 1 min ago, 5min SLA -> remaining ~4min
+      makeIssue({ id: '1', priority: 1, labels: { nodes: [{ id: 'l1', name: 'ticket' }] } }),
     ];
 
     const { result } = renderHook(() => useSLA(issues, mockSLAConfig));
 
-    const timers = result.current.get('1');
-    expect(timers).toBeDefined();
-    expect(timers!.length).toBeGreaterThan(0);
-    expect(timers![0].state).toBe('OK');
-    expect(timers![0].remaining).toBeGreaterThan(0);
+    const timer = result.current.get('1');
+    expect(timer).toBeDefined();
+    expect(timer!.state).toBe('FRESH');
+    expect(timer!.remaining).toBeGreaterThan(0);
   });
 
-  it('detects BREACHED state for overdue issues', () => {
+  it('detects EXPIRED state for overdue issues', () => {
     const overdueIssue = makeIssue({
       id: '1',
       priority: 1,
       createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(), // 10 min ago, 5min SLA
+      labels: { nodes: [{ id: 'l1', name: 'ticket' }] },
     });
 
     const issues: Issue[] = [overdueIssue];
     const { result } = renderHook(() => useSLA(issues, mockSLAConfig));
 
-    const timers = result.current.get('1');
-    expect(timers).toBeDefined();
-    expect(timers!.length).toBeGreaterThan(0);
-    expect(timers![0].state).toBe('BREACHED');
-    expect(timers![0].remaining).toBe(0);
+    const timer = result.current.get('1');
+    expect(timer).toBeDefined();
+    expect(timer!.state).toBe('EXPIRED');
+    expect(timer!.remaining).toBe(0);
   });
 
   it('updates remaining time on each tick', () => {
     const issues: Issue[] = [
-      makeIssue({ id: '1', priority: 1, createdAt: new Date(Date.now() - 60_000).toISOString() }),
+      makeIssue({
+        id: '1',
+        priority: 1,
+        createdAt: new Date(Date.now() - 60_000).toISOString(),
+        labels: { nodes: [{ id: 'l1', name: 'ticket' }] },
+      }),
     ];
 
     const { result } = renderHook(() => useSLA(issues, mockSLAConfig));
 
-    const firstTimers = result.current.get('1');
-    const firstRemaining = firstTimers![0].remaining;
+    const firstTimer = result.current.get('1')!;
+    const firstRemaining = firstTimer.remaining;
 
     // Advance by 2 seconds
     act(() => {
       vi.advanceTimersByTime(2000);
     });
 
-    const secondTimers = result.current.get('1');
-    expect(secondTimers![0].remaining).toBeLessThan(firstRemaining);
+    const secondTimer = result.current.get('1')!;
+    expect(secondTimer.remaining).toBeLessThan(firstRemaining);
   });
 
-  it('handles issues with priority that has no matching SLA', () => {
+  it('handles issues with no ticket label (no timer)', () => {
     const issues: Issue[] = [
-      makeIssue({ id: '1', priority: 0 }), // No priority — no SLA matches
+      makeIssue({ id: '1', priority: 0 }), // no label
     ];
 
     const { result } = renderHook(() => useSLA(issues, mockSLAConfig));
@@ -103,7 +113,7 @@ describe('useSLA', () => {
   });
 
   it('returns empty map when no SLA config provided', () => {
-    const issues: Issue[] = [makeIssue({ id: '1', priority: 1 })];
+    const issues: Issue[] = [makeIssue({ id: '1', priority: 1, labels: { nodes: [{ id: 'l1', name: 'ticket' }] } })];
 
     const { result } = renderHook(() => useSLA(issues, undefined));
 

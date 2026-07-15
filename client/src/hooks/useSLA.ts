@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { Issue, SLAConfig, TimerInfo } from '@camtom/shared';
-import { findAllApplicableSLAs, computeMultiSLAInfo } from '../utils/sla';
+import { computeTimerInfo } from '../utils/sla';
 
 interface SLAState {
-  timers: Map<string, TimerInfo[]>; // issueId → array of TimerInfo (one per applicable SLA)
+  timers: Map<string, TimerInfo>; // issueId → single TimerInfo
 }
 
 export function useSLA(issues: Issue[], slas: SLAConfig[] | undefined) {
@@ -13,22 +13,45 @@ export function useSLA(issues: Issue[], slas: SLAConfig[] | undefined) {
   useEffect(() => {
     if (!slas || slas.length === 0) return;
 
+    // Find the first timer config (we only support one timer)
+    const timerConfig = slas[0];
+    if (!timerConfig) return;
+
     const computeTimers = () => {
-      const timers = new Map<string, TimerInfo[]>();
+      const timers = new Map<string, TimerInfo>();
 
       for (const issue of issues) {
-        // No timer for unassigned tickets — SLA starts when someone picks it up
-        if (!issue.assignee) continue;
+        // Only show timer when the issue has the "ticket" label
+        const hasTicketLabel = issue.labels?.nodes?.some(
+          (l) => l.name === 'ticket',
+        ) ?? false;
+        if (!hasTicketLabel) continue;
 
-        const applicableSLAs = findAllApplicableSLAs(slas, issue.priority);
-        if (applicableSLAs.length === 0) continue;
-
+        // Anchor: labelTimestamps sent by the server → stored in assignedAt
         const anchor = issue.assignedAt ?? issue.createdAt;
-        const timerInfos = computeMultiSLAInfo(anchor, applicableSLAs);
-        timers.set(issue.id, timerInfos);
+        const timerInfo = computeTimerInfo(anchor, {
+          id: timerConfig.id,
+          maxMinutes: timerConfig.maxMinutes,
+          warningThresholds: timerConfig.warningThresholds,
+        });
+        timers.set(issue.id, timerInfo);
       }
 
-      setState({ timers });
+      setState((prevState) => {
+        // Only update if timers actually changed (avoid re-renders)
+        const prevKeys = Array.from(prevState.timers.keys()).sort().join(',');
+        const nextKeys = Array.from(timers.keys()).sort().join(',');
+        if (prevKeys !== nextKeys) return { timers };
+
+        // Check if any TimerInfo actually changed
+        for (const [id, info] of timers) {
+          const prevTimer = prevState.timers.get(id);
+          if (!prevTimer || prevTimer.state !== info.state || prevTimer.remaining !== info.remaining) {
+            return { timers };
+          }
+        }
+        return prevState; // No changes — skip re-render
+      });
     };
 
     // Compute immediately

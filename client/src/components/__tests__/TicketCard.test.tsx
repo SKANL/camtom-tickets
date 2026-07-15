@@ -15,11 +15,14 @@ const mockIssue: Issue = {
   state: { id: 'state-1', name: 'In Progress', type: 'started' },
 };
 
+import { TimerState } from '@camtom/shared';
+
 const mockTimer = {
   deadline: Date.now() + 4 * 60 * 1000,
   remaining: 4 * 60 * 1000,
-  state: 'OK' as const,
+  state: 'FRESH' as TimerState,
   slaId: 'urgent_sla',
+  maxMinutes: 30,
 };
 
 describe('TicketCard', () => {
@@ -56,7 +59,7 @@ describe('TicketCard', () => {
   });
 
   it('renders SLATimer when timers prop is provided', () => {
-    const { container } = render(<TicketCard issue={mockIssue} timers={[mockTimer]} config={null} />);
+    const { container } = render(<TicketCard issue={mockIssue} timer={mockTimer} config={null} />);
     // SLATimer renders an SVG
     const svg = container.querySelector('svg');
     expect(svg).toBeInTheDocument();

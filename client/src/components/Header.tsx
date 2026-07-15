@@ -158,12 +158,12 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
           {showReport ? <><IconClipboard size={16} /> Board</> : <><IconChart size={16} /> Report</>}
         </button>
 
-        {/* Current time — styled like a kitchen clock */}
+        {/* Current time — styled like a kitchen clock, less competing orange */}
         <div
           style={{
             fontFamily: 'var(--font-display)',
             fontSize: 'var(--text-2xl)',
-            color: 'var(--color-oil)',
+            color: 'rgba(255,255,255,0.85)',
             letterSpacing: '0.08em',
             minWidth: 110,
             textAlign: 'center',

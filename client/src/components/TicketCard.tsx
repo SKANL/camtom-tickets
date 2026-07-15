@@ -1,23 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Issue, TimerInfo, ConfigResponse } from '@camtom/shared';
+import { Issue, TimerInfo, ConfigResponse, TimerState } from '@camtom/shared';
 import { SLATimer } from './SLATimer';
 import { IconPerson, resolveIcon, priorityIcons } from './Icons';
 
 interface TicketCardProps {
   issue: Issue;
-  timers?: TimerInfo[];
+  timer?: TimerInfo;
   config?: ConfigResponse | null;
 }
 
-function slaShortLabel(slaId: string): string {
-  const map: Record<string, string> = {
-    responder_usuario: 'Responder',
-    recuperar_usuario: 'Recuperar',
-    avisar_equipo: 'Avisar',
-    resolver_iniciar: 'Iniciar',
-    resolver_definitiva: 'Resolver',
+function shortState(s: TimerState): string {
+  const map: Record<TimerState, string> = {
+    FRESH: 'Fresh',
+    WARMING: 'Warm',
+    HEATING: 'Hot',
+    CRITICAL: 'Critical',
+    EXPIRED: 'Burned',
   };
-  return map[slaId] || slaId;
+  return map[s] ?? s;
 }
 
 function hashRotation(id: string): number {
@@ -31,7 +31,7 @@ function hashRotation(id: string): number {
 const defaultPriorityConfig: Record<number, { label: string; color: string; dotColor: string }> = {
   1: { label: 'Urgent', color: 'var(--priority-urgent)', dotColor: '#D32F2F' },
   2: { label: 'High', color: 'var(--priority-high)', dotColor: '#FF8C00' },
-  3: { label: 'Medium', color: 'var(--priority-medium)', dotColor: '#3B82F6' },
+  3: { label: 'Medium', color: 'var(--priority-medium)', dotColor: '#E0A82E' },
   4: { label: 'Low', color: 'var(--priority-low)', dotColor: '#4CAF50' },
   0: { label: 'None', color: 'var(--priority-none)', dotColor: '#9E9E9E' },
 };
@@ -44,21 +44,7 @@ const defaultStateLabels: Record<string, { label: string; icon: string }> = {
   triaged: { label: 'Triaged', icon: 'search' },
 };
 
-function isBreached(timers?: TimerInfo[]): boolean {
-  return timers?.some((t) => t.state === 'BREACHED') ?? false;
-}
-
-function isWarning(timers?: TimerInfo[]): boolean {
-  return timers?.some((t) => t.state === 'WARNING') ?? false;
-}
-
-function getMinRemainingPct(timers?: TimerInfo[]): number {
-  if (!timers || timers.length === 0) return 1;
-  const worst = Math.min(...timers.map((t) => t.remaining / Math.max(1, t.deadline - Date.now() + t.remaining)));
-  return Math.max(0, worst);
-}
-
-export function TicketCard({ issue, timers, config }: TicketCardProps) {
+export function TicketCard({ issue, timer, config }: TicketCardProps) {
   const priorityLabels = config?.dashboard?.priorityLabels ?? defaultPriorityConfig;
   const stateLabels = config?.dashboard?.stateLabels ?? defaultStateLabels;
   const animationIntensity = config?.dashboard?.displayOptions?.animationIntensity ?? 'full';
@@ -90,21 +76,24 @@ export function TicketCard({ issue, timers, config }: TicketCardProps) {
     }
   }, [hasArrived]);
 
-  const breached = isBreached(timers);
-  const warning = isWarning(timers);
-  const burntPct = getMinRemainingPct(timers);
-  const isBurnt = burntPct < 0.15 && !breached;
+  const timerState = timer?.state;
+  const expired = timerState === 'EXPIRED';
+  const critical = timerState === 'CRITICAL';
+  const heating = timerState === 'HEATING';
+  const burntPct = timer ? timer.remaining / (timer.maxMinutes * 60_000) : 1;
+  const isBurnt = burntPct < 0.15 && !expired;
   const cssVars = { '--ticket-rotation': `${rotation}deg` } as React.CSSProperties;
 
   // Build class name list
   const classes = ['ticket-card'];
-  if (breached && animationIntensity !== 'off') classes.push('siren-flash');
+  if (expired && animationIntensity !== 'off') classes.push('siren-flash');
   if (hasArrived && isNew && animationIntensity !== 'off') {
     classes.push('arrival-bounce');
     if (animationIntensity === 'full') classes.push('arrival-glow');
   }
   if (isBurnt && animationIntensity !== 'off') classes.push('burnt-fade');
-  if (warning && animationIntensity !== 'off') classes.push('urgent-pulse');
+  if (critical && animationIntensity !== 'off') classes.push('ticket-critical-pulse');
+  if (heating && animationIntensity !== 'off') classes.push('ticket-heating-pulse');
 
   return (
     <div
@@ -143,10 +132,24 @@ export function TicketCard({ issue, timers, config }: TicketCardProps) {
         </span>
       </div>
 
-      {/* TITLE — topmost text, var(--text-lg), 3-line clamp */}
-      <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-lg)', lineHeight: 1.3, color: 'var(--color-oil)', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', minHeight: '3.9em' }}>
+      {/* TITLE — h3 for semantics, readable font, sentence-case */}
+      <h3
+        style={{
+          fontFamily: 'var(--font-body)',
+          fontSize: 'var(--text-base)',
+          fontWeight: 600,
+          lineHeight: 1.35,
+          color: 'var(--color-mayo)',
+          display: '-webkit-box',
+          WebkitLineClamp: 3,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+          minHeight: '4.05em',
+          margin: 0,
+        }}
+      >
         {issue.title}
-      </div>
+      </h3>
 
       {/* IDENTIFIER — var(--text-xs), clickable link to Linear, below title */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -154,31 +157,47 @@ export function TicketCard({ issue, timers, config }: TicketCardProps) {
           href={`https://linear.app/issue/${issue.identifier}`}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ textDecoration: 'none', color: 'rgba(255,255,255,0.5)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}
+          style={{ textDecoration: 'none', color: 'rgba(255,255,255,0.7)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}
           onClick={(e) => e.stopPropagation()}
         >
           #{issue.identifier}
         </a>
 
-        {/* PROJECT — subtle, shown when available */}
+        {/* PROJECT — shown when available */}
         {issue.project && (
-          <span style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.35)', display: 'flex', alignItems: 'center', gap: 3 }}>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.55)', display: 'flex', alignItems: 'center', gap: 3 }}>
             <svg viewBox="0 0 24 24" fill="currentColor" width={10} height={10}><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/></svg>
             {issue.project.name}
           </span>
         )}
       </div>
 
-      {/* Labels */}
+      {/* Labels — better contrast, uniform padding */}
       {issue.labels && issue.labels.nodes.length > 0 && (
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {issue.labels.nodes.slice(0, 3).map((label) => (
-            <span key={label.id} style={{ fontSize: 'var(--text-xs)', padding: '1px 6px', borderRadius: 'var(--radius-sm)', background: label.color ? `${label.color}33` : 'rgba(255,255,255,0.1)', color: label.color || 'rgba(255,255,255,0.6)', border: `1px solid ${label.color ? `${label.color}66` : 'rgba(255,255,255,0.15)'}` }}>
-              {label.name}
-            </span>
-          ))}
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+          {issue.labels.nodes.slice(0, 3).map((label) => {
+            // Ensure readable text on colored backgrounds
+            const bgOpacity = label.color ? '44' : '15';
+            const borderOpacity = label.color ? '77' : '25';
+            const textColor = label.color
+              ? // Lighten dark label colors for readability on dark bg
+                (() => {
+                  const hex = label.color.replace('#', '');
+                  const r = parseInt(hex.slice(0, 2), 16);
+                  const g = parseInt(hex.slice(2, 4), 16);
+                  const b = parseInt(hex.slice(4, 6), 16);
+                  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+                  return lum < 0.4 ? '#fff' : label.color;
+                })()
+              : 'rgba(255,255,255,0.75)';
+            return (
+              <span key={label.id} style={{ fontSize: 'var(--text-xs)', padding: '2px 8px', borderRadius: 'var(--radius-sm)', background: label.color ? `${label.color}${bgOpacity}` : 'rgba(255,255,255,0.08)', color: textColor, border: `1px solid ${label.color ? `${label.color}${borderOpacity}` : 'rgba(255,255,255,0.15)'}`, fontWeight: 500, lineHeight: 1.4 }}>
+                {label.name}
+              </span>
+            );
+          })}
           {issue.labels.nodes.length > 3 && (
-            <span style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.3)' }}>+{issue.labels.nodes.length - 3}</span>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.4)' }}>+{issue.labels.nodes.length - 3}</span>
           )}
         </div>
       )}
@@ -191,12 +210,17 @@ export function TicketCard({ issue, timers, config }: TicketCardProps) {
         </div>
       )}
 
-      {/* Timers */}
-      {timers && timers.length > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap', marginTop: 'var(--space-sm)', paddingTop: 'var(--space-sm)' }}>
-          {timers.map((t) => (
-            <SLATimer key={t.slaId} timer={t} size={56} strokeWidth={4} label={slaShortLabel(t.slaId)} timerStyle={config?.dashboard?.displayOptions?.timerStyle} />
-          ))}
+      {/* Single timer */}
+      {timer && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 'var(--space-sm)', paddingTop: 'var(--space-sm)' }}>
+          <SLATimer
+            key={timer.slaId}
+            timer={timer}
+            size={64}
+            strokeWidth={5}
+            label={shortState(timer.state)}
+            timerStyle={config?.dashboard?.displayOptions?.timerStyle}
+          />
         </div>
       )}
 

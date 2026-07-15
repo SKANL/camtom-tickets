@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { TimerInfo, TimerState } from '@camtom/shared';
+import { formatRemaining } from '../utils/sla';
+import { IconFire } from './Icons';
 
 interface SLATimerProps {
   timer: TimerInfo;
@@ -10,36 +12,83 @@ interface SLATimerProps {
 }
 
 const STROKE_WIDTH = 6;
-const RADIUS = 40;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-const stateColors: Record<TimerState, string> = {
-  OK: 'var(--sla-ok)',
-  WARNING: 'var(--sla-warning)',
-  BREACHED: 'var(--sla-breached)',
+// State metadata for the 5-tier timer
+interface StateMeta {
+  color: string;
+  glowColor: string;
+  label: string;
+}
+
+const stateMeta: Record<TimerState, StateMeta> = {
+  FRESH:    { color: 'var(--sla-ok, #4CAF50)',       glowColor: 'rgba(76,175,80,0.4)',   label: 'Fresh' },
+  WARMING:  { color: 'var(--sla-warming, #FFC107)',   glowColor: 'rgba(255,193,7,0.4)',   label: 'Warming' },
+  HEATING:  { color: 'var(--sla-heating, #FF9800)',   glowColor: 'rgba(255,152,0,0.5)',   label: 'Heating' },
+  CRITICAL: { color: 'var(--sla-critical, #F44336)',  glowColor: 'rgba(244,67,54,0.6)',   label: 'Critical' },
+  EXPIRED:  { color: 'var(--sla-expired, #B71C1C)',   glowColor: 'rgba(183,28,28,0.7)',   label: 'Expired' },
 };
 
-export function SLATimer({ timer, size = 96, strokeWidth = STROKE_WIDTH, label, timerStyle = 'circle' }: SLATimerProps) {
-  const { remaining, state, deadline, maxMinutes } = timer;
-  const totalMinutes = maxMinutes ?? Math.max(1, remaining / 60_000);
-  const totalMs = totalMinutes * 60_000;
+/**
+ * Interpolate between two hex colors — used for smooth gradient progress.
+ */
+function lerpColor(a: string, b: string, t: number): string {
+  const pa = parseInt(a.slice(1), 16);
+  const pb = parseInt(b.slice(1), 16);
+  const r = Math.round(((pa >> 16) & 0xff) * (1 - t) + ((pb >> 16) & 0xff) * t);
+  const g = Math.round(((pa >> 8) & 0xff) * (1 - t) + ((pb >> 8) & 0xff) * t);
+  const bl = Math.round((pa & 0xff) * (1 - t) + (pb & 0xff) * t);
+  return `rgb(${r},${g},${bl})`;
+}
+
+/**
+ * Get a smooth progress color from green → amber → orange → red based on pct.
+ */
+function progressColor(pct: number): string {
+  if (pct > 0.6) {
+    // Green → Amber (100% – 60%)
+    const t = (pct - 0.6) / 0.4;
+    return lerpColor('#FFC107', '#4CAF50', t);
+  }
+  if (pct > 0.3) {
+    // Amber → Orange (60% – 30%)
+    const t = (pct - 0.3) / 0.3;
+    return lerpColor('#FF9800', '#FFC107', t);
+  }
+  if (pct > 0.1) {
+    // Orange → Red (30% – 10%)
+    const t = (pct - 0.1) / 0.2;
+    return lerpColor('#F44336', '#FF9800', t);
+  }
+  // Red → Deep Red (10% – 0%)
+  const t = pct / 0.1;
+  return lerpColor('#B71C1C', '#F44336', t);
+}
+
+export function SLATimer({
+  timer,
+  size = 96,
+  strokeWidth = STROKE_WIDTH,
+  label,
+  timerStyle = 'circle',
+}: SLATimerProps) {
+  const { remaining, state, maxMinutes } = timer;
+  const totalMs = maxMinutes * 60_000;
   const pct = Math.max(0, Math.min(1, remaining / totalMs));
-  const color = stateColors[state];
+  // Unique id so multiple EXPIRED timers don't collide on one SVG filter.
+  const filterId = `glow-${useId()}`;
 
-  const formatTime = (ms: number): string => {
-    if (ms <= 0) return '00:00';
-    const totalSec = Math.floor(ms / 1000);
-    const mins = Math.floor(totalSec / 60);
-    const secs = totalSec % 60;
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
+  const meta = stateMeta[state];
+  const smoothColor = progressColor(pct);
 
-  // Bar mode
+  // EXPIRED gets a slow burning pulse
+  const stateClass =
+    state === 'CRITICAL' ? 'pulse-critical' :
+    state === 'HEATING' ? 'pulse-heating' :
+    state === 'WARMING' ? 'pulse-warming' :
+    state === 'EXPIRED' ? 'expired-burn' : '';
+
+  // ---- Bar mode ----
   if (timerStyle === 'bar') {
-    const tickCount = 10;
-    const ticks = Array.from({ length: tickCount }, (_, i) => i / tickCount);
-    const tickInterval = Math.max(0.5, pct * 6); // accelerate as time runs out
-
     return (
       <div
         style={{
@@ -50,8 +99,8 @@ export function SLATimer({ timer, size = 96, strokeWidth = STROKE_WIDTH, label, 
           alignItems: 'center',
         }}
       >
-        {/* Bar track */}
         <div
+          className={stateClass}
           style={{
             width: '100%',
             height: 'var(--timer-bar-height, 8px)',
@@ -61,34 +110,32 @@ export function SLATimer({ timer, size = 96, strokeWidth = STROKE_WIDTH, label, 
             position: 'relative',
           }}
         >
-          {/* Gradient fill */}
           <div
             style={{
               width: `${pct * 100}%`,
               height: '100%',
-              background: state === 'OK'
-                ? 'linear-gradient(90deg, var(--color-lettuce), #66BB6A)'
-                : state === 'WARNING'
-                  ? 'linear-gradient(90deg, var(--color-mustard), #FFA000)'
-                  : 'linear-gradient(90deg, var(--color-ketchup), #B71C1C)',
+              background: `linear-gradient(90deg, ${meta.color}, ${smoothColor})`,
               borderRadius: 4,
-              transition: 'width 1s linear',
+              transition: 'width 1s linear, background 0.5s ease',
+              boxShadow: state === 'EXPIRED' || state === 'CRITICAL'
+                ? `0 0 6px ${meta.glowColor}`
+                : 'none',
             }}
           />
-          {/* Tick marks — accelerate on WARNING */}
-          {state === 'WARNING' && (
+          {/* Glowing indicator dot on the leading edge (CRITICAL+) */}
+          {(state === 'CRITICAL' || state === 'EXPIRED') && (
             <div
-              className="urgent-pulse"
               style={{
                 position: 'absolute',
                 right: `${(1 - pct) * 100}%`,
-                top: 0,
-                bottom: 0,
-                width: 3,
+                top: -2,
+                width: 4,
+                height: 12,
                 background: '#fff',
-                opacity: 0.8,
-                borderRadius: 1,
-                animationDuration: `${Math.max(0.3, tickInterval)}s`,
+                borderRadius: 2,
+                opacity: 0.7,
+                boxShadow: `0 0 8px ${meta.color}`,
+                animation: 'urgent-pulse 0.5s ease-in-out infinite',
               }}
             />
           )}
@@ -98,27 +145,39 @@ export function SLATimer({ timer, size = 96, strokeWidth = STROKE_WIDTH, label, 
             display: 'flex',
             justifyContent: 'space-between',
             width: '100%',
-            fontSize: 8,
-            color: 'rgba(255,255,255,0.35)',
+            fontSize: 11,
+            color: 'rgba(255,255,255,0.6)',
             fontFamily: 'var(--font-body)',
           }}
         >
-          <span>{formatTime(remaining)}</span>
-          {label && <span style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>}
+          <span
+            style={{
+              color: state === 'EXPIRED' ? meta.color : undefined,
+              fontWeight: state === 'EXPIRED' ? 700 : undefined,
+            }}
+          >
+            {formatRemaining(remaining)}
+          </span>
+          {label && (
+            <span style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {label}
+            </span>
+          )}
         </div>
       </div>
     );
   }
 
-  // Circle mode (existing)
+  // ---- Circle mode ----
   const center = size / 2;
   const r = center - strokeWidth;
-  const offset = CIRCUMFERENCE * (1 - pct);
+  const circumference = 2 * Math.PI * r;
+  const offset = circumference * (1 - pct);
   const viewBox = `0 0 ${size} ${size}`;
 
   return (
     <div
-      className={`sla-timer sla-timer--${state.toLowerCase()}${state === 'WARNING' ? ' pulse-warning' : ''}${state === 'BREACHED' ? ' shake-breach' : ''}`}
+      className={`sla-timer sla-timer--${state.toLowerCase()} ${stateClass}`}
       style={{
         width: size,
         height: size,
@@ -129,66 +188,103 @@ export function SLATimer({ timer, size = 96, strokeWidth = STROKE_WIDTH, label, 
       }}
     >
       <svg width={size} height={size} viewBox={viewBox}>
+        {/* Glow filter for EXPIRED */}
+        {state === 'EXPIRED' && (
+          <defs>
+            <filter id={filterId}>
+              <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+              <feMerge>
+                <feMergeNode in="coloredBlur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+        )}
         {/* Background circle */}
         <circle
           cx={center}
           cy={center}
           r={r}
           fill="none"
-          stroke="rgba(255,255,255,0.1)"
+          stroke="rgba(255,255,255,0.08)"
           strokeWidth={strokeWidth}
         />
-        {/* Progress arc */}
+        {/* Progress arc with smooth color */}
         <circle
           cx={center}
           cy={center}
           r={r}
           fill="none"
-          stroke={color}
+          stroke={smoothColor}
           strokeWidth={strokeWidth}
           strokeLinecap="round"
-          strokeDasharray={CIRCUMFERENCE}
+          strokeDasharray={circumference}
           strokeDashoffset={offset}
           transform={`rotate(-90 ${center} ${center})`}
+          filter={state === 'EXPIRED' ? `url(#${filterId})` : undefined}
           style={{
             transition: 'stroke-dashoffset 1s linear, stroke 0.3s ease',
           }}
         />
-        {/* Timer dots decoration */}
-        {state === 'BREACHED' && (
+        {/* Decorative dots on EXPIRED — like embers */}
+        {state === 'EXPIRED' && (
           <>
-            <circle cx={center - 10} cy={center - 12} r={3} fill={color} opacity={0.6} />
-            <circle cx={center + 10} cy={center + 10} r={2} fill={color} opacity={0.4} />
+            <circle cx={center - 12} cy={center - 14} r={3} fill={meta.color} opacity={0.7} />
+            <circle cx={center + 14} cy={center + 6} r={2.5} fill={meta.color} opacity={0.5} />
+            <circle cx={center - 8} cy={center + 16} r={2} fill={meta.color} opacity={0.3} />
           </>
         )}
+        {/* Subtle halo ring on CRITICAL */}
+        {state === 'CRITICAL' && (
+          <circle
+            cx={center}
+            cy={center}
+            r={r + 2}
+            fill="none"
+            stroke={meta.glowColor}
+            strokeWidth={2}
+            opacity={0.4}
+            style={{ animation: 'urgent-pulse 1s ease-in-out infinite' }}
+          />
+        )}
       </svg>
-      {/* Time text */}
+      {/* Timer text */}
       <span
         style={{
           position: 'absolute',
           fontFamily: 'var(--font-display)',
-          fontSize: state === 'BREACHED' ? '0.9rem' : '1rem',
-          color,
-          textShadow: '1px 1px 2px rgba(0,0,0,0.5)',
+          fontSize: Math.round(size * 0.24),
+          fontWeight: 700,
+          color: smoothColor,
+          textShadow: state === 'CRITICAL' || state === 'EXPIRED'
+            ? `0 0 8px ${meta.glowColor}`
+            : '1px 1px 2px rgba(0,0,0,0.5)',
           lineHeight: 1,
+          transition: 'color 0.5s ease, text-shadow 0.5s ease',
         }}
       >
-        {formatTime(remaining)}
+        {state === 'EXPIRED'
+          ? <IconFire size={Math.round(size * 0.34)} />
+          : formatRemaining(remaining)}
       </span>
+      {/* State indicator label */}
       {label && (
         <span
           style={{
             position: 'absolute',
             bottom: -2,
             fontFamily: 'var(--font-body)',
-            fontSize: 8,
-            color: 'rgba(255,255,255,0.35)',
+            fontSize: Math.max(10, Math.round(size * 0.13)),
+            fontWeight: 700,
+            color: meta.color,
             textTransform: 'uppercase',
-            letterSpacing: '0.05em',
+            letterSpacing: '0.08em',
             whiteSpace: 'nowrap',
+            opacity: state === 'FRESH' ? 0.5 : 1,
+            transition: 'opacity 0.3s ease',
           }}
         >
-          {label}
+          {state === 'EXPIRED' ? 'BURNED' : label}
         </span>
       )}
     </div>

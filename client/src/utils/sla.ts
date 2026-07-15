@@ -1,24 +1,37 @@
-import { TimerState, TimerInfo } from '@camtom/shared';
+import { TimerState, TimerInfo, SLAWarningThresholds } from '@camtom/shared';
 
 /**
- * Compute SLA deadline from createdAt and maxMinutes.
- * Future createdAt is clamped to now (never show negative elapsed).
+ * Compute countdown deadline from the anchor timestamp + maxMinutes.
+ * Clamps future anchors to now (never show negative elapsed).
  */
-export function computeDeadline(createdAt: string, maxMinutes: number): number {
-  const created = new Date(createdAt).getTime();
+export function computeDeadline(anchor: string, maxMinutes: number): number {
+  const anchorTime = new Date(anchor).getTime();
   const now = Date.now();
-  const clampedCreated = created > now ? now : created;
-  return clampedCreated + maxMinutes * 60_000;
+  const clamped = anchorTime > now ? now : anchorTime;
+  return clamped + maxMinutes * 60_000;
 }
 
 /**
- * Determine timer state based on remaining time and warning threshold.
+ * Determine the timer state based on remaining time and threshold tiers.
+ *
+ * States:
+ *   FRESH    >  warming%  (–)  green, calm
+ *   WARMING  >  heating%       amber, subtle pulse
+ *   HEATING  >  critical%      orange, stronger pulse
+ *   CRITICAL ≤  critical%      red, shake + warning sound
+ *   EXPIRED  ≤  0              deep red, breach, dramatic
  */
-export function getTimerState(remaining: number, maxMinutes: number, warningThreshold: number): TimerState {
-  if (remaining <= 0) return 'BREACHED';
+export function getTimerState(
+  remaining: number,
+  maxMinutes: number,
+  thresholds: SLAWarningThresholds,
+): TimerState {
+  if (remaining <= 0) return 'EXPIRED';
   const pct = remaining / (maxMinutes * 60_000);
-  if (pct <= warningThreshold) return 'WARNING';
-  return 'OK';
+  if (pct <= thresholds.critical) return 'CRITICAL';
+  if (pct <= thresholds.heating) return 'HEATING';
+  if (pct <= thresholds.warming) return 'WARMING';
+  return 'FRESH';
 }
 
 /**
@@ -33,63 +46,24 @@ export function formatRemaining(ms: number): string {
 }
 
 /**
- * Compute full SLA timer info for a single ticket.
+ * Compute the single timer info for a ticket.
  */
-export function computeSLAInfo(
-  createdAt: string,
-  maxMinutes: number,
-  warningThreshold: number,
-  slaId: string,
+export function computeTimerInfo(
+  anchor: string,
+  timerConfig: {
+    id: string;
+    maxMinutes: number;
+    warningThresholds: SLAWarningThresholds;
+  },
 ): TimerInfo {
-  const deadline = computeDeadline(createdAt, maxMinutes);
+  const deadline = computeDeadline(anchor, timerConfig.maxMinutes);
   const remaining = Math.max(0, deadline - Date.now());
-  const state = getTimerState(remaining, maxMinutes, warningThreshold);
-
-  return { deadline, remaining, state, slaId, maxMinutes };
-}
-
-/**
- * Find the applicable SLA config for a given priority.
- */
-export function findApplicableSLA(
-  slas: { id: string; label: string; applicablePriorities: number[]; maxMinutes: number; warningThreshold: number }[],
-  priority: number,
-): { id: string; label: string; maxMinutes: number; warningThreshold: number } | undefined {
-  // Find the SLA with the shortest maxMinutes that applies to this priority
-  const applicable = slas
-    .filter((sla) => sla.applicablePriorities.includes(priority))
-    .sort((a, b) => a.maxMinutes - b.maxMinutes);
-
-  return applicable.length > 0
-    ? { id: applicable[0].id, label: applicable[0].label, maxMinutes: applicable[0].maxMinutes, warningThreshold: applicable[0].warningThreshold }
-    : undefined;
-}
-
-/**
- * Find ALL applicable SLA configs for a given priority (for multi-SLA display).
- */
-/**
- * Compute SLA info for ALL applicable SLA definitions for an issue.
- * Returns an array of TimerInfo, one per applicable SLA.
- */
-export function computeMultiSLAInfo(
-  createdAt: string,
-  applicableSLAs: { id: string; label: string; maxMinutes: number; warningThreshold: number }[],
-): TimerInfo[] {
-  return applicableSLAs.map((sla) => computeSLAInfo(createdAt, sla.maxMinutes, sla.warningThreshold, sla.id));
-}
-
-export function findAllApplicableSLAs(
-  slas: { id: string; label: string; applicablePriorities: number[]; maxMinutes: number; warningThreshold: number }[],
-  priority: number,
-): { id: string; label: string; maxMinutes: number; warningThreshold: number }[] {
-  return slas
-    .filter((sla) => sla.applicablePriorities.includes(priority))
-    .map((sla) => ({
-      id: sla.id,
-      label: sla.label,
-      maxMinutes: sla.maxMinutes,
-      warningThreshold: sla.warningThreshold,
-    }))
-    .sort((a, b) => a.maxMinutes - b.maxMinutes);
+  const state = getTimerState(remaining, timerConfig.maxMinutes, timerConfig.warningThresholds);
+  return {
+    deadline,
+    remaining,
+    state,
+    slaId: timerConfig.id,
+    maxMinutes: timerConfig.maxMinutes,
+  };
 }

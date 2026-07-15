@@ -17,8 +17,8 @@
 
   /* Background */
   --bg-dark: #2C1810;
-  --bg-card: #3E2723;
-  --bg-card-hover: #4E342E;
+  --bg-card: #4A2E28;
+  --bg-card-hover: #5A3832;
   --bg-header: #1A0E0A;
 
   /* Status Colors */
@@ -29,7 +29,7 @@
   /* Priority Colors */
   --priority-urgent: var(--color-ketchup);
   --priority-high: var(--color-oil);
-  --priority-medium: #3B82F6;
+  --priority-medium: #E0A82E;
   --priority-low: var(--color-lettuce);
   --priority-none: #9E9E9E;
 
@@ -81,7 +81,7 @@
   /* Gauge strip colors per priority */
   --gauge-urgent: var(--color-ketchup);
   --gauge-high: var(--color-oil);
-  --gauge-medium: #3B82F6;
+  --gauge-medium: #E0A82E;
   --gauge-low: var(--color-lettuce);
   --gauge-none: #9E9E9E;
 }

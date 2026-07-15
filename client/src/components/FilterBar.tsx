@@ -1,8 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { MetadataCatalog, FilterState } from '@camtom/shared';
-import { IconSearch, IconX } from './Icons';
-
-const FILTER_STORAGE_KEY = 'camtom-filter-state';
+import { IconSearch, IconX, IconCheckmark } from './Icons';
 
 const PRIORITY_OPTIONS = [
   { id: '1', name: 'Urgent' },
@@ -18,17 +16,6 @@ interface FilterBarProps {
   onChange: (filter: FilterState) => void;
 }
 
-function loadFilter(): FilterState {
-  try {
-    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
-    if (!raw) return emptyFilter();
-    const parsed = JSON.parse(raw);
-    return { ...emptyFilter(), ...parsed }; // merge ensures excludeStates: [] for old saved filters
-  } catch {
-    return emptyFilter();
-  }
-}
-
 function emptyFilter(): FilterState {
   return {
     projects: [],
@@ -39,14 +26,6 @@ function emptyFilter(): FilterState {
     textSearch: '',
     excludeStates: [],
   };
-}
-
-function saveFilter(filter: FilterState): void {
-  try {
-    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filter));
-  } catch {
-    // localStorage may be full
-  }
 }
 
 function countActive(f: FilterState): number {
@@ -68,9 +47,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
   const activeCount = countActive(filter);
 
   const setFilter = useCallback(<K extends FilterKey>(key: K, value: FilterState[K]) => {
-    const next = { ...filter, [key]: value };
-    saveFilter(next);
-    onChange(next);
+    onChange({ ...filter, [key]: value });
   }, [filter, onChange]);
 
   const toggleArray = useCallback((key: 'projects' | 'assignees' | 'states' | 'labels' | 'priorities', id: string) => {
@@ -82,22 +59,10 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
   }, [filter, setFilter]);
 
   const clearAll = useCallback(() => {
-    const empty = emptyFilter();
-    saveFilter(empty);
-    onChange(empty);
+    onChange(emptyFilter());
   }, [onChange]);
 
   const disabled = !metadata;
-
-  // Restore from localStorage on mount
-  useEffect(() => {
-    const saved = loadFilter();
-    if (countActive(saved) > 0) {
-      onChange(saved);
-    }
-    // Only on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   return (
     <div
@@ -221,22 +186,34 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
             stringIds
           />
 
+          {/* Separator */}
+          {activeCount > 0 && (
+            <span style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.1)', flexShrink: 0 }} />
+          )}
+
           {/* Clear all */}
           {activeCount > 0 && (
             <button
               onClick={clearAll}
               title="Clear all filters"
               style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'rgba(255,255,255,0.4)',
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 'var(--radius-pill)',
+                color: 'rgba(255,255,255,0.5)',
                 cursor: 'pointer',
-                padding: 4,
+                padding: '4px 10px',
                 display: 'flex',
                 alignItems: 'center',
+                gap: 4,
+                fontFamily: 'var(--font-body)',
+                fontSize: 'var(--text-xs)',
+                transition: 'all 0.15s ease',
               }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = '#fff'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
             >
-              <IconX size={16} />
+              <IconX size={14} /> Clear
             </button>
           )}
         </>
@@ -334,7 +311,16 @@ function FilterSelect({ label, options, selected, onChange, disabled, stringIds 
               return (
                 <div
                   key={opt.id}
+                  role="option"
+                  aria-selected={isSelected}
+                  tabIndex={0}
                   onClick={() => onChange(opt.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onChange(opt.id);
+                    }
+                  }}
                   style={{
                     padding: '6px 10px',
                     cursor: 'pointer',
@@ -363,9 +349,7 @@ function FilterSelect({ label, options, selected, onChange, disabled, stringIds 
                       flexShrink: 0,
                     }}
                   >
-                    {isSelected && (
-                      <span style={{ color: '#fff', fontSize: 10, lineHeight: 1 }}>✓</span>
-                    )}
+                    {isSelected && <IconCheckmark size={10} style={{ color: '#fff' }} />}
                   </span>
                   {opt.name}
                 </div>

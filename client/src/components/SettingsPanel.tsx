@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ConfigResponse, DashboardConfig, PriorityLabelConfig, KitchenPhrases, SLAConfig, DisplayOptions } from '@camtom/shared';
-import { IconX, IconSettings, IconVolume } from './Icons';
+import { IconX, IconSettings, IconVolume, IconCheckmark, IconPlus } from './Icons';
 
 const SETTINGS_STORAGE_KEY = 'camtom-settings-overrides';
 
 interface SettingsOverrides {
   title?: string;
-  pollingInterval?: number;
   teamMembers?: string[];
   priorityLabels?: Record<number, Partial<PriorityLabelConfig>>;
   kitchenPhrases?: Partial<KitchenPhrases>;
@@ -73,7 +72,6 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
 
   // Derived values
   const title = overrides.title ?? config?.dashboard?.title ?? 'Camtom Ticket Dashboard';
-  const pollingInterval = overrides.pollingInterval ?? config?.dashboard?.pollingInterval ?? 30000;
   const teamMembers = overrides.teamMembers ?? config?.dashboard?.teamMembers ?? [];
   const kitchenPhrases = { ...config?.dashboard?.kitchenPhrases, ...overrides.kitchenPhrases } as KitchenPhrases;
   const slaWindowHours = overrides.slaWindowHours ?? config?.dashboard?.report?.slaWindowHours ?? 24;
@@ -167,7 +165,7 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
       label: 'New SLA',
       applicablePriorities: [1, 2],
       maxMinutes: 30,
-      warningThreshold: 0.2,
+      warningThresholds: { warming: 0.6, heating: 0.3, critical: 0.1 },
     };
     setSlaRules([...slaRules, newSla]);
     setEditingSla(newSla);
@@ -230,7 +228,6 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
       // Build dashboard update from overrides
       const dashUpdate: Record<string, any> = {};
       if (overrides.title !== undefined) dashUpdate.title = overrides.title;
-      if (overrides.pollingInterval !== undefined) dashUpdate.pollingInterval = overrides.pollingInterval;
       if (overrides.teamMembers !== undefined) dashUpdate.teamMembers = overrides.teamMembers;
       if (overrides.kitchenPhrases !== undefined) dashUpdate.kitchenPhrases = overrides.kitchenPhrases;
       if (overrides.displayOptions !== undefined) {
@@ -292,6 +289,15 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
     onApply(overrides);
   }, [overrides, onApply]);
 
+  // Close on Escape
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     <div
       style={{
@@ -310,6 +316,9 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Dashboard Settings"
         style={{
           background: '#1A0F0A',
           border: '2px solid rgba(255,99,71,0.3)',
@@ -420,19 +429,6 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
                     onChange={(e) => setOverride('title', e.target.value)}
                     style={inputStyle}
                   />
-                </FieldRow>
-                <FieldRow label="Polling Interval (ms)">
-                  <select
-                    value={pollingInterval}
-                    onChange={(e) => setOverride('pollingInterval', Number(e.target.value))}
-                    style={selectStyle}
-                  >
-                    <option value={5000}>5 seconds</option>
-                    <option value={10000}>10 seconds</option>
-                    <option value={15000}>15 seconds</option>
-                    <option value={30000}>30 seconds</option>
-                    <option value={60000}>1 minute</option>
-                  </select>
                 </FieldRow>
                 <FieldRow label="SLA Window (hours)">
                   <input
@@ -603,17 +599,30 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
                           style={{ ...inputStyle, width: 80 }}
                         />
                       </div>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'var(--text-xs)', minWidth: 40 }}>Threshold</span>
-                        <input
-                          type="number"
-                          min={0.05}
-                          max={1}
-                          step={0.05}
-                          value={editingSla.warningThreshold}
-                          onChange={(e) => setEditingSla({ ...editingSla, warningThreshold: Number(e.target.value) })}
-                          style={{ ...inputStyle, width: 80 }}
-                        />
+                      <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'var(--text-xs)', minWidth: 40 }}>Thresholds</span>
+                        {(['warming', 'heating', 'critical'] as const).map((tier) => (
+                          <label key={tier} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.6)' }}>
+                            {tier}
+                            <input
+                              type="number"
+                              min={0.01}
+                              max={0.99}
+                              step={0.05}
+                              value={editingSla.warningThresholds[tier]}
+                              onChange={(e) =>
+                                setEditingSla({
+                                  ...editingSla,
+                                  warningThresholds: {
+                                    ...editingSla.warningThresholds,
+                                    [tier]: Number(e.target.value),
+                                  },
+                                })
+                              }
+                              style={{ ...inputStyle, width: 60 }}
+                            />
+                          </label>
+                        ))}
                       </div>
                       <div>
                         <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'var(--text-xs)', display: 'block', marginBottom: 4 }}>Applicable Priorities</span>
@@ -726,9 +735,13 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
                   fontFamily: 'var(--font-display)',
                   fontSize: 'var(--text-sm)',
                   letterSpacing: '0.05em',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
                 }}
               >
-                + Add SLA Rule
+                <IconPlus size={14} /> Add SLA Rule
               </button>
             </div>
           )}
@@ -814,20 +827,6 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
                 </FieldRow>
               </Section>
 
-              <Section label="Auto-Mute">
-                <FieldRow label="Auto mute after idle">
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', color: 'rgba(255,255,255,0.6)', fontSize: 'var(--text-sm)' }}>
-                    <input
-                      type="checkbox"
-                      checked={overrides.displayOptions?.autoMute ?? false}
-                      onChange={(e) => setNestedOverride('displayOptions', 'autoMute', e.target.checked)}
-                      style={{ accentColor: 'var(--color-tomato)' }}
-                    />
-                    {overrides.displayOptions?.autoMute ? 'Enabled' : 'Disabled'}
-                  </label>
-                </FieldRow>
-              </Section>
-
               <Section label="Sound Previews">
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {[
@@ -882,8 +881,8 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
             </div>
           )}
           {saveStatus === 'saved' && (
-            <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--color-lettuce)', marginRight: 'auto' }}>
-              ✓ Saved
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--color-lettuce)', marginRight: 'auto' }}>
+              <IconCheckmark size={12} /> Saved
             </div>
           )}
           <button

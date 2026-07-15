@@ -72,28 +72,31 @@ button:focus-visible {
 .ticket-card {
   position: relative;
   background: var(--bg-card);
-  border: 2px solid rgba(255, 255, 255, 0.12);
+  border: 2px solid rgba(255, 255, 255, 0.18);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
+  box-shadow:
+    var(--shadow-card),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
   transition: transform 0.25s var(--timing-bounce), box-shadow 0.25s var(--timing-smooth);
 }
 
 .ticket-card::before {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  height: 5px;
   background: linear-gradient(90deg, var(--color-tomato), var(--color-mustard), var(--color-lettuce));
   border-radius: var(--radius-card) var(--radius-card) 0 0;
   opacity: 0.6;
+  pointer-events: none;
 }
 
 .ticket-card:hover {
   transform: translateY(-4px) rotate(0deg) !important;
   box-shadow: var(--shadow-card-hover);
-  border-color: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 /* Priority section divider */
@@ -134,7 +137,7 @@ button:focus-visible {
   position: relative;
 }
 
-/* SLA Timer kitchen timer style */
+/* SLA Timer — 5-state styling now inlined via stateMeta in SLATimer.tsx */
 .sla-timer {
   font-family: var(--font-display);
   letter-spacing: 0.08em;
@@ -144,26 +147,6 @@ button:focus-visible {
   padding: 4px 12px;
   border-radius: var(--radius-pill);
   font-size: var(--text-sm);
-}
-
-.sla-timer--ok {
-  background: rgba(76, 175, 80, 0.15);
-  color: var(--color-lettuce);
-  border: 1px solid rgba(76, 175, 80, 0.3);
-}
-
-.sla-timer--warning {
-  background: rgba(255, 215, 0, 0.15);
-  color: var(--color-mustard);
-  border: 1px solid rgba(255, 215, 0, 0.3);
-  animation: pulseWarning 1.5s ease-in-out infinite;
-}
-
-.sla-timer--breached {
-  background: rgba(211, 47, 47, 0.2);
-  color: var(--color-ketchup);
-  border: 1px solid rgba(211, 47, 47, 0.4);
-  animation: shakeBreach 0.6s var(--timing-bounce);
 }
 
 /* Scrollbar styling for kitchen theme */
@@ -195,21 +178,20 @@ button:focus-visible {
 /* Order board columns */
 .order-board {
   display: flex;
-  gap: var(--space-lg);
-  padding: var(--space-lg);
+  gap: var(--space-md);
+  padding: var(--space-md);
   flex: 1;
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: hidden;
-  scroll-snap-type: x mandatory;
+  min-height: 0;
 }
 
 .order-column {
-  flex: 1;
-  min-width: 320px;
-  max-width: 500px;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  scroll-snap-align: start;
+  min-height: 0;
 }
 
 /* Section headers with chef styling */

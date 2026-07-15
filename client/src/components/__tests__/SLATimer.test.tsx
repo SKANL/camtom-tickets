@@ -7,8 +7,9 @@ describe('SLATimer', () => {
   const baseTimer: TimerInfo = {
     deadline: Date.now() + 5 * 60 * 1000,
     remaining: 5 * 60 * 1000,
-    state: 'OK',
+    state: 'FRESH',
     slaId: 'test_sla',
+    maxMinutes: 30,
   };
 
   it('renders SVG element', () => {
@@ -17,7 +18,7 @@ describe('SLATimer', () => {
     expect(svg).toBeInTheDocument();
   });
 
-  it('renders time display when OK', () => {
+  it('renders time display when FRESH', () => {
     render(<SLATimer timer={baseTimer} />);
     // Should show mm:ss format
     expect(screen.getByText(/05:00/)).toBeInTheDocument();
@@ -32,43 +33,46 @@ describe('SLATimer', () => {
     expect(screen.getByText(/02:30/)).toBeInTheDocument();
   });
 
-  it('renders 00:00 when breached', () => {
-    const breachedTimer: TimerInfo = {
+  it('renders a fire icon (SVG, not an emoji) when EXPIRED', () => {
+    const expiredTimer: TimerInfo = {
       ...baseTimer,
       remaining: 0,
-      state: 'BREACHED',
+      state: 'EXPIRED',
     };
-    render(<SLATimer timer={breachedTimer} />);
-    expect(screen.getByText('00:00')).toBeInTheDocument();
+    const { container } = render(<SLATimer timer={expiredTimer} />);
+    // No emoji glyph — the countdown is replaced by the IconFire SVG.
+    expect(screen.queryByText('🔥')).toBeNull();
+    // Ring SVG + fire icon SVG.
+    expect(container.querySelectorAll('svg').length).toBeGreaterThanOrEqual(2);
   });
 
-  it('has pulse-warning class when in WARNING state', () => {
-    const warningTimer: TimerInfo = {
-      ...baseTimer,
-      remaining: 30_000, // 30 seconds
-      state: 'WARNING',
-    };
-    const { container } = render(<SLATimer timer={warningTimer} />);
-    const wrapper = container.firstChild as HTMLElement;
-    expect(wrapper.classList.contains('pulse-warning')).toBe(true);
-  });
-
-  it('has shake-breach class when in BREACHED state', () => {
-    const breachedTimer: TimerInfo = {
+  it('has expired-burn class when in EXPIRED state', () => {
+    const expiredTimer: TimerInfo = {
       ...baseTimer,
       remaining: 0,
-      state: 'BREACHED',
+      state: 'EXPIRED',
     };
-    const { container } = render(<SLATimer timer={breachedTimer} />);
+    const { container } = render(<SLATimer timer={expiredTimer} />);
     const wrapper = container.firstChild as HTMLElement;
-    expect(wrapper.classList.contains('shake-breach')).toBe(true);
+    expect(wrapper.classList.contains('expired-burn')).toBe(true);
   });
 
-  it('has no animation class when in OK state', () => {
+  it('has pulse-critical class when in CRITICAL state', () => {
+    const criticalTimer: TimerInfo = {
+      ...baseTimer,
+      remaining: 10_000,
+      state: 'CRITICAL',
+    };
+    const { container } = render(<SLATimer timer={criticalTimer} />);
+    const wrapper = container.firstChild as HTMLElement;
+    expect(wrapper.classList.contains('pulse-critical')).toBe(true);
+  });
+
+  it('has no animation class when in FRESH state', () => {
     const { container } = render(<SLATimer timer={baseTimer} />);
     const wrapper = container.firstChild as HTMLElement;
-    expect(wrapper.classList.contains('pulse-warning')).toBe(false);
-    expect(wrapper.classList.contains('shake-breach')).toBe(false);
+    expect(wrapper.classList.contains('pulse-critical')).toBe(false);
+    expect(wrapper.classList.contains('expired-burn')).toBe(false);
   });
 
   it('renders with custom size', () => {
