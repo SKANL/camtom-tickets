@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { SoundToggle } from './SoundToggle';
 import { formatTime } from '../utils/format';
 import { ConfigResponse } from '@camtom/shared';
-import { IconChefHat, IconClipboard, IconChart, IconSettings, priorityIcons } from './Icons';
+import { IconChefHat, IconClipboard, IconChart, IconSettings } from './Icons';
+import { priorityIcons } from '../lib/priorities';
 
 interface HeaderProps {
   title: string;

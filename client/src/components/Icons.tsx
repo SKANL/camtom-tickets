@@ -368,12 +368,3 @@ export function resolveIcon(iconName: string, size = 14): React.ReactNode {
   if (!Component) return null;
   return <Component size={size} />;
 }
-
-/** Map of priority level → icon component */
-export const priorityIcons: Record<number, React.ComponentType<IconProps>> = {
-  1: IconFire,
-  2: IconFlash,
-  3: IconClipboard,
-  4: IconCheck,
-  0: IconMinusSquare,
-};

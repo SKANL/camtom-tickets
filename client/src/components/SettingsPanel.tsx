@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ConfigResponse, DashboardConfig, PriorityLabelConfig, KitchenPhrases, SLAConfig, DisplayOptions } from '@camtom/shared';
 import { IconX, IconSettings, IconVolume, IconCheckmark, IconPlus } from './Icons';
+import { PRIORITY_LEVELS, PRIORITY_BY_LEVEL } from '../lib/priorities';
 
 const SETTINGS_STORAGE_KEY = 'camtom-settings-overrides';
 
@@ -36,15 +37,6 @@ function saveOverrides(overrides: SettingsOverrides): void {
     // localStorage may be full
   }
 }
-
-const PRIORITY_KEYS = [1, 2, 3, 4, 0] as const;
-const PRIORITY_NAMES: Record<number, string> = {
-  1: 'Urgent',
-  2: 'High',
-  3: 'Medium',
-  4: 'Low',
-  0: 'None',
-};
 
 type TabId = 'general' | 'display' | 'sla' | 'labels' | 'sounds';
 
@@ -82,7 +74,7 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
 
   // Merge priority labels
   const priorityLabels: Record<number, Partial<PriorityLabelConfig>> = {};
-  for (const pk of PRIORITY_KEYS) {
+  for (const pk of PRIORITY_LEVELS) {
     priorityLabels[pk] = {
       ...config?.dashboard?.priorityLabels?.[pk],
       ...overrides.priorityLabels?.[pk],
@@ -238,7 +230,7 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
       }
       if (overrides.priorityLabels !== undefined) {
         dashUpdate.priorityLabels = {};
-        for (const pk of PRIORITY_KEYS) {
+        for (const pk of PRIORITY_LEVELS) {
           if (overrides.priorityLabels[pk]) {
             dashUpdate.priorityLabels[pk] = {
               ...config?.dashboard?.priorityLabels?.[pk],
@@ -535,10 +527,10 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
               </Section>
 
               <Section label="Column Visibility">
-                {PRIORITY_KEYS.map((pk) => {
+                {PRIORITY_LEVELS.map((pk) => {
                   const visible = displayOptions.columnVisibility?.[pk] ?? true;
                   return (
-                    <FieldRow key={pk} label={PRIORITY_NAMES[pk]}>
+                    <FieldRow key={pk} label={PRIORITY_BY_LEVEL[pk].name}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', color: 'rgba(255,255,255,0.6)', fontSize: 'var(--text-sm)' }}>
                         <input
                           type="checkbox"
@@ -642,7 +634,7 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
                                 fontSize: 'var(--text-xs)',
                               }}
                             >
-                              {PRIORITY_NAMES[p]}
+                              {PRIORITY_BY_LEVEL[p].name}
                             </button>
                           ))}
                         </div>
@@ -750,12 +742,12 @@ export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) 
           {activeTab === 'labels' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
               <Section label="Priority Labels & Colors">
-                {PRIORITY_KEYS.map((pk) => {
-                  const pl = priorityLabels[pk] || { label: PRIORITY_NAMES[pk], color: '#888', dotColor: '#888' };
+                {PRIORITY_LEVELS.map((pk) => {
+                  const pl = priorityLabels[pk] || { label: PRIORITY_BY_LEVEL[pk].name, color: '#888', dotColor: '#888' };
                   return (
                     <div key={pk} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
                       <span style={{ minWidth: 80, fontFamily: 'var(--font-display)', fontSize: 'var(--text-sm)', color: 'rgba(255,255,255,0.7)' }}>
-                        {PRIORITY_NAMES[pk]}
+                        {PRIORITY_BY_LEVEL[pk].name}
                       </span>
                       <input
                         value={pl.label ?? ''}

@@ -2,6 +2,7 @@ import React from 'react';
 import { Issue, TimerInfo, ConfigResponse } from '@camtom/shared';
 import { TicketCard } from './TicketCard';
 import { IconForkKnife } from './Icons';
+import { priorityGaugeColors } from '../lib/priorities';
 
 interface PriorityGroupProps {
   label: string;
@@ -18,14 +19,6 @@ export function PriorityGroup({ label, icon, color, issues, timers, collapsed, c
     return null;
   }
 
-  const gaugeColors: Record<string, string> = {
-    '1': 'var(--color-ketchup)',
-    '2': 'var(--color-oil)',
-    '3': '#E0A82E',
-    '4': 'var(--color-lettuce)',
-    '0': '#9E9E9E',
-  };
-
   return (
     <div className="order-column">
       {/* Temperature gauge strip */}
@@ -33,7 +26,7 @@ export function PriorityGroup({ label, icon, color, issues, timers, collapsed, c
         style={{
           height: 4,
           borderRadius: '2px 2px 0 0',
-          background: `linear-gradient(90deg, ${gaugeColors['1']} 0%, ${gaugeColors['2']} 25%, ${gaugeColors['3']} 50%, ${gaugeColors['4']} 75%, ${gaugeColors['0']} 100%)`,
+          background: `linear-gradient(90deg, ${priorityGaugeColors[1]} 0%, ${priorityGaugeColors[2]} 25%, ${priorityGaugeColors[3]} 50%, ${priorityGaugeColors[4]} 75%, ${priorityGaugeColors[0]} 100%)`,
           opacity: 0.6,
           marginBottom: 2,
         }}

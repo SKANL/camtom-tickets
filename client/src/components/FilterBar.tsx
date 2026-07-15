@@ -1,14 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { MetadataCatalog, FilterState } from '@camtom/shared';
 import { IconSearch, IconX, IconCheckmark } from './Icons';
-
-const PRIORITY_OPTIONS = [
-  { id: '1', name: 'Urgent' },
-  { id: '2', name: 'High' },
-  { id: '3', name: 'Medium' },
-  { id: '4', name: 'Low' },
-  { id: '0', name: 'No Priority' },
-];
+import { PRIORITY_OPTIONS } from '../lib/priorities';
 
 interface FilterBarProps {
   metadata: MetadataCatalog | null;

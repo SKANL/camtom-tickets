@@ -2,7 +2,7 @@ import React from 'react';
 import { Issue, TimerInfo, ConfigResponse } from '@camtom/shared';
 import { PriorityGroup } from './PriorityGroup';
 import { Skeleton } from 'boneyard-js/react';
-import { priorityIcons } from './Icons';
+import { priorityIcons } from '../lib/priorities';
 
 interface DashboardProps {
   issues: Issue[];

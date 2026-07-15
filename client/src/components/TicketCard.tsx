@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Issue, TimerInfo, ConfigResponse, TimerState } from '@camtom/shared';
 import { SLATimer } from './SLATimer';
-import { IconPerson, resolveIcon, priorityIcons } from './Icons';
+import { IconPerson, resolveIcon } from './Icons';
+import { priorityIcons, defaultPriorityConfig } from '../lib/priorities';
 
 interface TicketCardProps {
   issue: Issue;
@@ -27,14 +28,6 @@ function hashRotation(id: string): number {
   }
   return (hash % 3) - 1.5;
 }
-
-const defaultPriorityConfig: Record<number, { label: string; color: string; dotColor: string }> = {
-  1: { label: 'Urgent', color: 'var(--priority-urgent)', dotColor: '#D32F2F' },
-  2: { label: 'High', color: 'var(--priority-high)', dotColor: '#FF8C00' },
-  3: { label: 'Medium', color: 'var(--priority-medium)', dotColor: '#E0A82E' },
-  4: { label: 'Low', color: 'var(--priority-low)', dotColor: '#4CAF50' },
-  0: { label: 'None', color: 'var(--priority-none)', dotColor: '#9E9E9E' },
-};
 
 const defaultStateLabels: Record<string, { label: string; icon: string }> = {
   completed: { label: 'Done', icon: 'check' },
