@@ -50,7 +50,7 @@ The existing daily Vercel cron remains enabled as a temporary incremental backup
 
 An applied first run establishes a baseline. An issue absent from Linear is eligible for deletion only after two later successful full snapshots and at least 24 hours. Explicitly archived issues may be deleted immediately, but only when the stored row predates the run. Tickets outside configured teams are never touched.
 
-Both missing and archived delete counts are subject to the absolute and percentage anomaly guards. Dry-run still records these warnings for review, but apply mode performs no deletes when any guard is active.
+Both missing and archived delete counts are subject to the absolute and percentage anomaly guards. The archived guard counts only archived Linear IDs that currently exist in the configured Supabase scope; the full archived snapshot count remains in the run audit, while `preview.archivedDeletionCandidates` exposes the actual intersection. Dry-run still records these warnings for review, but apply mode performs no deletes when any guard is active.
 
 The full worker has a 20-second internal deadline, below the scheduler's 25-second HTTP timeout and the current 30-second Vercel function limit. The deadline is propagated through Linear requests, retry backoff, and every Supabase operation. Supabase calls also have per-operation abort caps; the long database RPCs enforce shorter `statement_timeout` and `lock_timeout` limits.
 

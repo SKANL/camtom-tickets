@@ -39,5 +39,3 @@ describe('Linear issue pagination', () => {
     await expect(paginateIssuePages(load)).rejects.toThrow('invalid or repeated endCursor');
   });
 });
-
-\n

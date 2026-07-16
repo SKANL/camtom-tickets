@@ -5,6 +5,7 @@ import { ReconcileScopeState, ScopedTicket } from './supabase';
 export interface FullReconcilePlan {
   active: ReconcileIssue[];
   archived: ReconcileIssue[];
+  archivedDeletionIds: string[];
   missingIds: string[];
   snapshotCount: number;
   baseline: boolean;
@@ -33,6 +34,8 @@ export function buildFullReconcilePlan(
   const active = issues.filter((issue) => !issue.archivedAt);
   const archived = issues.filter((issue) => !!issue.archivedAt);
   const currentInScope = currentTickets.filter((ticket) => !!ticket.team?.id && scope.has(ticket.team.id));
+  const currentInScopeIds = new Set(currentInScope.map((ticket) => ticket.id));
+  const archivedDeletionIds = archived.map((issue) => issue.id).filter((id) => currentInScopeIds.has(id));
   const missingIds = currentInScope.map((ticket) => ticket.id).filter((id) => !ids.has(id));
   const snapshotCount = issues.length;
   const blockedReasons: string[] = [];
@@ -44,13 +47,16 @@ export function buildFullReconcilePlan(
   const candidateRatio = currentInScope.length === 0 ? 0 : missingIds.length / currentInScope.length;
   if (missingIds.length > 25) blockedReasons.push(`Missing candidates exceed 25 (${missingIds.length})`);
   if (candidateRatio > 0.05) blockedReasons.push(`Missing candidates exceed 5% (${(candidateRatio * 100).toFixed(1)}%)`);
-  const archivedRatio = currentInScope.length === 0 ? 0 : archived.length / currentInScope.length;
-  if (archived.length > 25) blockedReasons.push(`Archived candidates exceed 25 (${archived.length})`);
+  const archivedRatio = currentInScope.length === 0 ? 0 : archivedDeletionIds.length / currentInScope.length;
+  if (archivedDeletionIds.length > 25) {
+    blockedReasons.push(`Archived candidates exceed 25 (${archivedDeletionIds.length})`);
+  }
   if (archivedRatio > 0.05) blockedReasons.push(`Archived candidates exceed 5% (${(archivedRatio * 100).toFixed(1)}%)`);
 
   return {
     active,
     archived,
+    archivedDeletionIds,
     missingIds,
     snapshotCount,
     baseline: !state || state.successful_snapshots === 0,

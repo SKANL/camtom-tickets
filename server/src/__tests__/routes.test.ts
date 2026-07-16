@@ -240,7 +240,11 @@ describe('API Routes', () => {
       .set('Authorization', 'Bearer cron-secret');
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ applied: false, dryRun: true });
+    expect(res.body).toMatchObject({
+      applied: false,
+      dryRun: true,
+      preview: { archivedDeletionCandidates: 0 },
+    });
     expect(storage.upsertTickets).not.toHaveBeenCalled();
     expect(storage.finalizeFullReconcile).not.toHaveBeenCalled();
     expect(storage.setLastSync).not.toHaveBeenCalled();

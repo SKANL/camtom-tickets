@@ -181,6 +181,7 @@ router.get('/api/cron/reconcile/full', async (req: Request, res: Response) => {
       baseline: plan.baseline,
       active: plan.active.length,
       archived: plan.archived.length,
+      archivedDeletionCandidates: plan.archivedDeletionIds.length,
       missing: plan.missingIds.length,
       blockedReasons: plan.blockedReasons,
     };
