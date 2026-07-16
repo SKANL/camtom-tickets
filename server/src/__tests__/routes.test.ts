@@ -3,6 +3,7 @@ import request from 'supertest';
 
 vi.mock('../linear-client', () => ({
   fetchIssuesSince: vi.fn(() => Promise.resolve([])),
+  fetchFullIssues: vi.fn(() => Promise.resolve({ issues: [], pages: 1, upperBound: '2026-01-01T00:00:00.000Z' })),
   fetchTeams: vi.fn(() => Promise.resolve([])),
   fetchProjects: vi.fn(() => Promise.resolve([])),
   fetchUsers: vi.fn(() => Promise.resolve([])),
@@ -15,6 +16,17 @@ vi.mock('../linear-client', () => ({
 vi.mock('../supabase', () => ({
   upsertTickets: vi.fn(() => Promise.resolve()),
   deleteTicket: vi.fn(() => Promise.resolve()),
+  claimWebhookDelivery: vi.fn(() => Promise.resolve('claimed')),
+  completeWebhookDelivery: vi.fn(() => Promise.resolve()),
+  releaseWebhookDelivery: vi.fn(() => Promise.resolve()),
+  acquireReconcileLease: vi.fn(() => Promise.resolve(true)),
+  releaseReconcileLease: vi.fn(() => Promise.resolve()),
+  getConfiguredReconcileTeamIds: vi.fn(() => Promise.resolve(['team-1'])),
+  getTicketsForTeams: vi.fn(() => Promise.resolve([])),
+  getReconcileScopeState: vi.fn(() => Promise.resolve(null)),
+  createReconcileRun: vi.fn(() => Promise.resolve('run-1')),
+  finishReconcileRun: vi.fn(() => Promise.resolve()),
+  finalizeFullReconcile: vi.fn(() => Promise.resolve({ archivedDeleted: 0, missingDeleted: 0 })),
   getLastSync: vi.fn(() => Promise.resolve(null)),
   setLastSync: vi.fn(() => Promise.resolve()),
   getAppConfig: vi.fn(() => Promise.resolve(null)),
@@ -46,14 +58,27 @@ vi.mock('../config', () => ({
 
 const { app } = await import('../index');
 const { saveConfig } = await import('../config');
+const linear = await import('../linear-client');
+const storage = await import('../supabase');
 
 describe('API Routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.CONFIG_ADMIN_TOKEN;
+    delete process.env.CRON_SECRET;
+    delete process.env.FULL_RECONCILE_APPLY;
+    vi.mocked(storage.acquireReconcileLease).mockResolvedValue(true);
+    vi.mocked(storage.getConfiguredReconcileTeamIds).mockResolvedValue(['team-1']);
+    vi.mocked(storage.getTicketsForTeams).mockResolvedValue([]);
+    vi.mocked(storage.getReconcileScopeState).mockResolvedValue(null);
+    vi.mocked(linear.fetchIssuesSince).mockResolvedValue([]);
+    vi.mocked(linear.fetchFullIssues).mockResolvedValue({ issues: [], pages: 1, upperBound: '2026-01-01T00:00:00.000Z' });
   });
   afterEach(() => {
+    vi.useRealTimers();
     delete process.env.CONFIG_ADMIN_TOKEN;
+    delete process.env.CRON_SECRET;
+    delete process.env.FULL_RECONCILE_APPLY;
   });
 
   it('GET /api/health returns status ok', async () => {
@@ -183,5 +208,106 @@ describe('API Routes', () => {
   it('GET /api/cron/reconcile without secret is rejected', async () => {
     const res = await request(app).get('/api/cron/reconcile');
     expect(res.status).toBe(401);
+  });
+
+  it('GET /api/cron/reconcile returns conflict without advancing the cursor when its lease is busy', async () => {
+    process.env.CRON_SECRET = 'cron-secret';
+    vi.mocked(storage.acquireReconcileLease).mockResolvedValue(false);
+
+    const res = await request(app)
+      .get('/api/cron/reconcile')
+      .set('Authorization', 'Bearer cron-secret');
+
+    expect(res.status).toBe(409);
+    expect(storage.acquireReconcileLease).toHaveBeenCalledWith('incremental', expect.any(String), 240);
+    expect(storage.setLastSync).not.toHaveBeenCalled();
+    expect(linear.fetchIssuesSince).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/cron/reconcile/full is dry-run by default and does not mutate tickets or cursor', async () => {
+    process.env.CRON_SECRET = 'cron-secret';
+    const issue = {
+      id: 'issue-1', identifier: 'ENG-1', title: 'Ticket', priority: 1 as const, priorityLabel: 'Urgent',
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z',
+      state: { id: 'state', name: 'Open', type: 'started' }, team: { id: 'team-1', name: 'Team' },
+    };
+    vi.mocked(linear.fetchFullIssues).mockResolvedValue({
+      issues: [issue], pages: 1, upperBound: '2026-01-02T00:00:00.000Z',
+    });
+
+    const res = await request(app)
+      .get('/api/cron/reconcile/full')
+      .set('Authorization', 'Bearer cron-secret');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ applied: false, dryRun: true });
+    expect(storage.upsertTickets).not.toHaveBeenCalled();
+    expect(storage.finalizeFullReconcile).not.toHaveBeenCalled();
+    expect(storage.setLastSync).not.toHaveBeenCalled();
+    expect(storage.acquireReconcileLease).toHaveBeenCalledWith(
+      'full', expect.any(String), 90, expect.any(AbortSignal),
+    );
+    expect(storage.finishReconcileRun).toHaveBeenCalledWith(
+      'run-1', expect.objectContaining({ status: 'completed' }), expect.any(AbortSignal),
+    );
+  });
+
+  it('GET /api/cron/reconcile/full blocks an empty configured scope before fetching or deleting', async () => {
+    process.env.CRON_SECRET = 'cron-secret';
+    vi.mocked(storage.getConfiguredReconcileTeamIds).mockResolvedValue([]);
+
+    const res = await request(app)
+      .get('/api/cron/reconcile/full')
+      .set('Authorization', 'Bearer cron-secret');
+
+    expect(res.status).toBe(409);
+    expect(linear.fetchFullIssues).not.toHaveBeenCalled();
+    expect(storage.finalizeFullReconcile).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/cron/reconcile/full closes a timed-out run and releases its lease', async () => {
+    process.env.CRON_SECRET = 'cron-secret';
+    vi.mocked(linear.fetchFullIssues).mockRejectedValueOnce(new Error('Linear reconcile deadline exceeded'));
+
+    const res = await request(app)
+      .get('/api/cron/reconcile/full')
+      .set('Authorization', 'Bearer cron-secret');
+
+    expect(res.status).toBe(500);
+    expect(storage.finishReconcileRun).toHaveBeenCalledWith(
+      'run-1', expect.objectContaining({ status: 'failed', error: expect.stringContaining('deadline') }),
+      expect.any(AbortSignal),
+    );
+    expect(storage.releaseReconcileLease).toHaveBeenCalledWith(
+      'full', expect.any(String), expect.any(AbortSignal),
+    );
+    expect(storage.finalizeFullReconcile).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/cron/reconcile/full times out a hanging Supabase read and attempts bounded cleanup', async () => {
+    vi.useFakeTimers();
+    process.env.CRON_SECRET = 'cron-secret';
+    vi.mocked(storage.getTicketsForTeams).mockImplementationOnce(() => new Promise(() => undefined));
+
+    const responsePromise = request(app)
+      .get('/api/cron/reconcile/full')
+      .set('Authorization', 'Bearer cron-secret')
+      .then((response) => response);
+
+    await vi.waitFor(() => expect(storage.getTicketsForTeams).toHaveBeenCalled());
+    await vi.advanceTimersByTimeAsync(4_000);
+    const res = await responsePromise;
+
+    expect(res.status).toBe(500);
+    expect(storage.finishReconcileRun).toHaveBeenCalledWith(
+      'run-1',
+      expect.objectContaining({ status: 'failed', error: expect.stringContaining('deadline') }),
+      expect.any(AbortSignal),
+    );
+    expect(storage.releaseReconcileLease).toHaveBeenCalledWith(
+      'full', expect.any(String), expect.any(AbortSignal),
+    );
+    expect(storage.finalizeFullReconcile).not.toHaveBeenCalled();
+    expect(storage.setLastSync).not.toHaveBeenCalled();
   });
 });

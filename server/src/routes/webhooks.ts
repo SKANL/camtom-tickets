@@ -1,12 +1,19 @@
 import { Router, Request, Response } from 'express';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import { Issue } from '@camtom/shared';
 import { issueToRow } from '../ticket-mapper';
-import { upsertTickets, deleteTicket } from '../supabase';
+import {
+  upsertTickets,
+  deleteTicket,
+  claimWebhookDelivery,
+  completeWebhookDelivery,
+  releaseWebhookDelivery,
+} from '../supabase';
 
 const router: Router = Router();
 
-const MAX_CLOCK_SKEW_MS = 60_000; // reject webhooks older than 60s (replay protection)
+const MAX_PAST_AGE_MS = 7 * 60 * 60 * 1_000;
+const MAX_FUTURE_SKEW_MS = 60_000;
 
 function getSecret(): Buffer {
   const secret = process.env.WEBHOOK_SECRET;
@@ -84,35 +91,63 @@ router.post('/api/webhooks/linear', async (req: Request, res: Response) => {
   }
 
   const payload = req.body;
+  const timestamp = payload?.webhookTimestamp;
 
-  // Replay protection: Linear includes webhookTimestamp (epoch ms).
-  if (
-    typeof payload?.webhookTimestamp === 'number' &&
-    Math.abs(Date.now() - payload.webhookTimestamp) > MAX_CLOCK_SKEW_MS
-  ) {
-    console.warn('[webhook] Stale webhookTimestamp — rejecting (possible replay)');
-    return res.status(401).json({ error: 'Stale webhook' });
+  if (typeof timestamp !== 'number'
+    || Date.now() - timestamp > MAX_PAST_AGE_MS
+    || timestamp - Date.now() > MAX_FUTURE_SKEW_MS) {
+    console.warn('[webhook] webhookTimestamp outside the retry-safe window');
+    return res.status(401).json({ error: 'Invalid webhook timestamp' });
   }
 
-  if (!payload || payload.type !== 'Issue') {
-    // Not an Issue event — acknowledge so Linear stops retrying.
-    return res.status(200).json({ ok: true });
+  const deliveryId = req.get('Linear-Delivery');
+  if (!deliveryId) {
+    return res.status(400).json({ error: 'Linear-Delivery header required' });
   }
+  const payloadHash = createHash('sha256').update(rawBody, 'utf8').digest('hex');
 
-  const { action, data } = payload;
-  const issue = dataToIssue(data);
+  let claim: Awaited<ReturnType<typeof claimWebhookDelivery>>;
+  try {
+    claim = await claimWebhookDelivery(deliveryId, payloadHash);
+  } catch (err: any) {
+    console.error(`[webhook] Failed to claim delivery ${deliveryId}: ${err.message}`);
+    return res.status(500).json({ error: 'Processing failed' });
+  }
+  if (claim.status === 'conflict') return res.status(409).json({ error: 'Delivery payload conflict' });
+  if (claim.status === 'busy') {
+    res.set('Retry-After', '30');
+    return res.status(503).json({ error: 'Delivery is already processing' });
+  }
+  if (claim.status === 'processed') {
+    return res.status(200).json({ ok: true, duplicate: true });
+  }
+  if (!claim.claimToken) {
+    console.error(`[webhook] Delivery ${deliveryId} was claimed without an owner token`);
+    return res.status(500).json({ error: 'Processing failed' });
+  }
+  const claimToken = claim.claimToken;
 
   try {
-    if (action === 'remove' || action === 'delete') {
-      await deleteTicket(issue.id);
-    } else {
-      await upsertTickets([issueToRow(issue)]);
+    if (payload?.type === 'Issue') {
+      const { action, data } = payload;
+      const issue = dataToIssue(data);
+      if (action === 'remove' || action === 'delete' || data?.archivedAt) {
+        const eventUpdatedAt = typeof data?.updatedAt === 'string' && Number.isFinite(Date.parse(data.updatedAt))
+          ? data.updatedAt
+          : new Date(timestamp).toISOString();
+        await deleteTicket(issue.id, eventUpdatedAt);
+      } else {
+        await upsertTickets([issueToRow(issue)]);
+      }
+      console.log(`[webhook] ${action} ${issue.identifier} written to Supabase`);
     }
-    console.log(`[webhook] ${action} ${issue.identifier} written to Supabase`);
+    await completeWebhookDelivery(deliveryId, payloadHash, claimToken);
     return res.status(200).json({ ok: true });
   } catch (err: any) {
-    // Return 500 so Linear retries later (and the reconcile job is a second net).
-    console.error(`[webhook] Failed to process ${action} ${issue.identifier}: ${err.message}`);
+    await releaseWebhookDelivery(deliveryId, payloadHash, claimToken).catch((releaseError: Error) => {
+      console.error(`[webhook] Failed to release delivery ${deliveryId}: ${releaseError.message}`);
+    });
+    console.error(`[webhook] Failed to process delivery ${deliveryId}: ${err.message}`);
     return res.status(500).json({ error: 'Processing failed' });
   }
 });

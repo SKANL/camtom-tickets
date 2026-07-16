@@ -35,6 +35,7 @@ interface LinearIssueNode {
   priorityLabel: string;
   createdAt: string;
   updatedAt: string;
+  archivedAt?: string | null;
   completedAt?: string | null;
   dueDate?: string;
   assignee?: { id: string; name: string; email?: string } | null;
@@ -45,6 +46,21 @@ interface LinearIssueNode {
   cycle?: { id: string; name: string } | null;
   estimate?: number;
 }
+
+export type ReconcileIssue = Issue & { archivedAt?: string };
+
+export interface IssuePage {
+  nodes: ReconcileIssue[];
+  pageInfo: LinearPageInfo;
+}
+
+export interface FullIssueSnapshot {
+  issues: ReconcileIssue[];
+  pages: number;
+  upperBound: string;
+}
+
+const MAX_ISSUE_PAGES = 1_000;
 
 function getApiKey(): string {
   const key = process.env.LINEAR_API_KEY;
@@ -66,10 +82,16 @@ async function executeGraphQL(
   query: string,
   variables: Record<string, any>,
   retries: number = MAX_RETRIES,
+  deadlineAt?: number,
 ): Promise<any> {
   const apiKey = getApiKey();
 
   for (let attempt = 0; attempt <= retries; attempt++) {
+    assertBeforeDeadline(deadlineAt);
+    const controller = deadlineAt ? new AbortController() : undefined;
+    const timeout = deadlineAt
+      ? setTimeout(() => controller!.abort(), Math.max(1, deadlineAt - Date.now()))
+      : undefined;
     try {
       const response = await fetch(LINEAR_API_URL, {
         method: 'POST',
@@ -78,6 +100,7 @@ async function executeGraphQL(
           Authorization: apiKey,
         },
         body: JSON.stringify({ query, variables }),
+        signal: controller?.signal,
       });
 
       if (response.status === 429) {
@@ -91,7 +114,7 @@ async function executeGraphQL(
         );
 
         if (attempt < retries) {
-          await sleep(waitMs);
+          await sleep(waitMs, deadlineAt);
           continue;
         }
       }
@@ -117,7 +140,7 @@ async function executeGraphQL(
           console.warn(
             `[linear-client] Rate limited by API (attempt ${attempt + 1}/${retries + 1}), waiting ${waitMs}ms...`,
           );
-          await sleep(waitMs);
+          await sleep(waitMs, deadlineAt);
           continue;
         }
 
@@ -128,26 +151,38 @@ async function executeGraphQL(
 
       return body.data;
     } catch (err: any) {
-      if (attempt < retries && !err.message?.includes('API key')) {
+      if (err?.name === 'AbortError') throw new Error('Linear reconcile deadline exceeded');
+      if (attempt < retries && !err.message?.includes('API key') && !err.message?.includes('deadline')) {
         const waitMs = BASE_BACKOFF_MS * Math.pow(2, attempt);
         console.warn(
           `[linear-client] Request failed (attempt ${attempt + 1}/${retries + 1}): ${err.message}, retrying in ${waitMs}ms...`,
         );
-        await sleep(waitMs);
+        await sleep(waitMs, deadlineAt);
         continue;
       }
       throw err;
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
   }
 
   throw new Error('Max retries exceeded for Linear API request');
 }
 
-function sleep(ms: number): Promise<void> {
+function assertBeforeDeadline(deadlineAt?: number): void {
+  if (deadlineAt !== undefined && Date.now() >= deadlineAt) {
+    throw new Error('Linear reconcile deadline exceeded');
+  }
+}
+
+function sleep(ms: number, deadlineAt?: number): Promise<void> {
+  if (deadlineAt !== undefined && Date.now() + ms >= deadlineAt) {
+    throw new Error('Linear reconcile deadline exceeded before retry');
+  }
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function mapIssue(node: LinearIssueNode): Issue {
+function mapIssue(node: LinearIssueNode): ReconcileIssue {
   return {
     id: node.id,
     identifier: node.identifier,
@@ -157,6 +192,7 @@ function mapIssue(node: LinearIssueNode): Issue {
     priorityLabel: node.priorityLabel,
     createdAt: node.createdAt,
     updatedAt: node.updatedAt,
+    archivedAt: node.archivedAt ?? undefined,
     completedAt: node.completedAt ?? undefined,
     dueDate: node.dueDate ?? undefined,
     assignee: node.assignee
@@ -175,6 +211,30 @@ function mapIssue(node: LinearIssueNode): Issue {
   };
 }
 
+export async function paginateIssuePages(
+  loadPage: (cursor: string | null) => Promise<IssuePage>,
+  maxPages = MAX_ISSUE_PAGES,
+): Promise<{ issues: ReconcileIssue[]; pages: number }> {
+  const issues: ReconcileIssue[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | null = null;
+
+  for (let page = 1; page <= maxPages; page++) {
+    const result = await loadPage(cursor);
+    issues.push(...result.nodes);
+    if (!result.pageInfo.hasNextPage) return { issues, pages: page };
+
+    const nextCursor = result.pageInfo.endCursor;
+    if (!nextCursor || nextCursor === cursor || seenCursors.has(nextCursor)) {
+      throw new Error('Linear pagination returned an invalid or repeated endCursor');
+    }
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
+  }
+
+  throw new Error(`Linear pagination exceeded ${maxPages} pages`);
+}
+
 /**
  * Fetch issues updated since a given timestamp.
  *
@@ -182,11 +242,7 @@ function mapIssue(node: LinearIssueNode): Issue {
  * When null, fetches everything via pagination.
  * When set, only fetches issues where updatedAt >= since (1-2 pages max).
  */
-export async function fetchIssuesSince(since: string | null): Promise<Issue[]> {
-  const allIssues: Issue[] = [];
-  let cursor: string | null = null;
-  let hasMore = true;
-
+export async function fetchIssuesSince(since: string | null): Promise<ReconcileIssue[]> {
   // No team filter: reconcile covers every team (the webhook already writes all
   // teams via allPublicTeams). The board selects the active team client-side.
   const filter: any = {};
@@ -196,7 +252,7 @@ export async function fetchIssuesSince(since: string | null): Promise<Issue[]> {
 
   const query = `
   query IssuesSince($filter: IssueFilter, $first: Int!, $after: String) {
-    issues(filter: $filter, orderBy: updatedAt, first: $first, after: $after) {
+    issues(filter: $filter, includeArchived: true, orderBy: updatedAt, first: $first, after: $after) {
       nodes {
         id
         identifier
@@ -206,6 +262,7 @@ export async function fetchIssuesSince(since: string | null): Promise<Issue[]> {
         priorityLabel
         createdAt
         updatedAt
+        archivedAt
         completedAt
         dueDate
         assignee { id name email }
@@ -220,25 +277,54 @@ export async function fetchIssuesSince(since: string | null): Promise<Issue[]> {
     }
   }`;
 
-  while (hasMore) {
+  const result = await paginateIssuePages(async (cursor) => {
     const data: { issues: LinearIssuesResponse } = await executeGraphQL(
       query,
       { filter, first: 250, after: cursor },
     );
+    return { nodes: data.issues.nodes.map(mapIssue), pageInfo: data.issues.pageInfo };
+  });
+  return result.issues;
+}
 
-    const issues = data.issues.nodes.map(mapIssue);
-    allIssues.push(...issues);
-
-    hasMore = data.issues.pageInfo.hasNextPage;
-    cursor = data.issues.pageInfo.endCursor;
-
-    // Safety: if fetching the full set and we got fewer than 250, we're done
-    if (!since && issues.length < 250) {
-      hasMore = false;
+export async function fetchFullIssues(
+  teamIds: string[],
+  upperBound: string,
+  deadlineAt?: number,
+): Promise<FullIssueSnapshot> {
+  if (teamIds.length === 0) throw new Error('Full reconcile requires at least one team id');
+  const filter = {
+    team: { id: { in: teamIds } },
+    updatedAt: { lte: upperBound },
+  };
+  const query = `
+  query FullIssues($filter: IssueFilter, $first: Int!, $after: String) {
+    issues(filter: $filter, includeArchived: true, orderBy: updatedAt, first: $first, after: $after) {
+      nodes {
+        id identifier title description priority priorityLabel createdAt updatedAt archivedAt completedAt dueDate
+        assignee { id name email }
+        state { id name type }
+        labels { nodes { id name color } }
+        project { id name }
+        team { id name }
+        cycle { id name }
+        estimate
+      }
+      pageInfo { hasNextPage endCursor }
     }
-  }
+  }`;
 
-  return allIssues;
+  const result = await paginateIssuePages(async (cursor) => {
+    const data: { issues: LinearIssuesResponse } = await executeGraphQL(
+      query,
+      { filter, first: 250, after: cursor },
+      MAX_RETRIES,
+      deadlineAt,
+    );
+    return { nodes: data.issues.nodes.map(mapIssue), pageInfo: data.issues.pageInfo };
+  });
+
+  return { ...result, upperBound };
 }
 
 // ---- Metadata GQL Queries ----
