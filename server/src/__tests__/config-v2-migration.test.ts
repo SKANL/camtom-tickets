@@ -36,13 +36,19 @@ describe('config v2 migration', () => {
     expect(migration).toContain("raise exception 'config v2 is active; legacy config writes are disabled'");
     expect(migration).toContain("set_config('camtom.config_v2_write', 'on', true)");
     expect(migration).toContain('update public.app_config_v2_state set active = true');
-    const lockAt = migration.indexOf('lock table public.app_config in share row exclusive mode');
-    const backfillAt = migration.indexOf('insert into public.team_dashboard_config(team_id, settings, updated_at)');
+    const triggerDropAt = migration.indexOf('drop trigger if exists sync_team_dashboard_config_from_app_config on public.app_config');
+    const backfillCommentAt = migration.indexOf('-- Preserve the exact v1 behavior');
+    const backfillAt = migration.indexOf('insert into public.team_dashboard_config(team_id, settings, updated_at)', backfillCommentAt);
+    const triggerFunctionAt = migration.indexOf('create or replace function public.sync_team_dashboard_config_from_app_config()');
     const triggerAt = migration.indexOf('create trigger sync_team_dashboard_config_from_app_config');
-    expect(lockAt).toBeGreaterThan(-1);
-    expect(lockAt).toBeLessThan(backfillAt);
-    expect(triggerAt).toBeGreaterThan(backfillAt);
-    expect(migration).toContain('concurrent 0010 writers block until');
+    expect(triggerFunctionAt).toBeGreaterThan(-1);
+    expect(triggerDropAt).toBeGreaterThan(-1);
+    expect(triggerDropAt).toBeGreaterThan(triggerFunctionAt);
+    expect(triggerAt).toBeGreaterThan(triggerDropAt);
+    expect(triggerAt).toBeGreaterThan(triggerFunctionAt);
+    expect(backfillAt).toBeGreaterThan(-1);
+    expect(triggerAt).toBeLessThan(backfillAt);
+    expect(migration).not.toMatch(/lock\s+table\s+public\.app_config/i);
     expect(migration).toMatch(/update public\.app_config[\s\S]*for team_config in select key, value from jsonb_each\(p_team_configs\)/);
   });
 

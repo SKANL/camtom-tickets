@@ -21,44 +21,6 @@ alter table public.app_config_v2_state enable row level security;
 revoke all privileges on table public.app_config_v2_state from public, anon, authenticated;
 grant select, insert, update on table public.app_config_v2_state to service_role;
 
--- Supabase CLI applies each migration transactionally. Take this lock before
--- both the copy and trigger activation: concurrent 0010 writers block until
--- commit, at which point the trigger is installed, so no committed legacy
--- write can escape normalization.
-lock table public.app_config in share row exclusive mode;
-
--- Preserve the exact v1 behavior for every existing team. Each row is the sole,
--- complete authority for that team's behavior; there is no second defaults layer.
-insert into public.team_dashboard_config(team_id, settings, updated_at)
-select
-  team.value ->> 'id',
-  jsonb_strip_nulls(jsonb_build_object(
-    'filter', coalesce(team.value ->> 'filter', 'active-states'),
-    'timer', case
-      when jsonb_typeof(team.value -> 'timer') = 'boolean' then (team.value ->> 'timer')::boolean
-      else true
-    end,
-    'accent', team.value -> 'accent',
-    'slas', config.sla,
-    'teamMembers', config.dashboard -> 'teamMembers',
-    'displayOrder', config.dashboard -> 'displayOrder',
-    'priorityLabels', config.dashboard -> 'priorityLabels',
-    'stateLabels', config.dashboard -> 'stateLabels',
-    'report', config.dashboard -> 'report',
-    'kitchenPhrases', config.dashboard -> 'kitchenPhrases',
-    'zoneLabels', coalesce(
-      config.dashboard -> 'zoneLabels',
-      '{"new":"Sin tomar","active":"En progreso","done":"Servidos hoy"}'::jsonb
-    ),
-    'displayOptions', coalesce(config.dashboard -> 'displayOptions', '{}'::jsonb)
-  )),
-  config.updated_at
-from public.app_config config
-cross join lateral jsonb_array_elements(config.dashboard -> 'teams') team(value)
-where config.id = 1
-  and public.ticket_team_config_valid(config.dashboard)
-on conflict (team_id) do nothing;
-
 -- During the expand/deploy window, legacy servers still call the 0010 RPC.
 -- Keep normalized team rows synchronized with those v1 writes so a later v2
 -- read cannot observe stale team settings. The first v2 write activates the new
@@ -117,11 +79,47 @@ $$;
 
 revoke all on function public.sync_team_dashboard_config_from_app_config() from public;
 
+-- Supabase CLI applies the migration and its history update in one atomic batch.
+-- CREATE TRIGGER acquires SHARE ROW EXCLUSIVE on app_config before the copy and
+-- holds it through backfill and batch commit. Concurrent legacy writers therefore
+-- resume only after the synchronization trigger is active.
 drop trigger if exists sync_team_dashboard_config_from_app_config on public.app_config;
 create trigger sync_team_dashboard_config_from_app_config
 after insert or update of dashboard, sla on public.app_config
 for each row when (new.id = 1)
 execute function public.sync_team_dashboard_config_from_app_config();
+
+-- Preserve the exact v1 behavior for every existing team. Each row is the sole,
+-- complete authority for that team's behavior; there is no second defaults layer.
+insert into public.team_dashboard_config(team_id, settings, updated_at)
+select
+  team.value ->> 'id',
+  jsonb_strip_nulls(jsonb_build_object(
+    'filter', coalesce(team.value ->> 'filter', 'active-states'),
+    'timer', case
+      when jsonb_typeof(team.value -> 'timer') = 'boolean' then (team.value ->> 'timer')::boolean
+      else true
+    end,
+    'accent', team.value -> 'accent',
+    'slas', config.sla,
+    'teamMembers', config.dashboard -> 'teamMembers',
+    'displayOrder', config.dashboard -> 'displayOrder',
+    'priorityLabels', config.dashboard -> 'priorityLabels',
+    'stateLabels', config.dashboard -> 'stateLabels',
+    'report', config.dashboard -> 'report',
+    'kitchenPhrases', config.dashboard -> 'kitchenPhrases',
+    'zoneLabels', coalesce(
+      config.dashboard -> 'zoneLabels',
+      '{"new":"Sin tomar","active":"En progreso","done":"Servidos hoy"}'::jsonb
+    ),
+    'displayOptions', coalesce(config.dashboard -> 'displayOptions', '{}'::jsonb)
+  )),
+  config.updated_at
+from public.app_config config
+cross join lateral jsonb_array_elements(config.dashboard -> 'teams') team(value)
+where config.id = 1
+  and public.ticket_team_config_valid(config.dashboard)
+on conflict (team_id) do nothing;
 
 create or replace function public.get_app_config_v2_snapshot()
 returns jsonb
