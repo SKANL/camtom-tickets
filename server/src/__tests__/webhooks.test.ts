@@ -1,5 +1,4 @@
 import { createHmac } from 'crypto';
-import express, { Request, Response } from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -11,15 +10,9 @@ vi.mock('../supabase', () => ({
   releaseWebhookDelivery: vi.fn(() => Promise.resolve()),
 }));
 
-const webhookRouter = (await import('../routes/webhooks')).default;
 const storage = await import('../supabase');
-const app = express();
-app.use(express.json({
-  verify: (req: Request, _res: Response, buffer: Buffer) => {
-    (req as Request & { rawBody: string }).rawBody = buffer.toString('utf8');
-  },
-}));
-app.use(webhookRouter);
+const { createApp } = await import('../app');
+const app = createApp();
 
 function payload(overrides: Record<string, unknown> = {}) {
   return {
@@ -84,6 +77,30 @@ describe('Linear webhook reliability', () => {
     expect(storage.completeWebhookDelivery).toHaveBeenCalledWith(
       'delivery-1', expect.stringMatching(/^[a-f0-9]{64}$/), 'claim-1',
     );
+  });
+
+  it('accepts a correctly signed Issue payload larger than 100 KiB', async () => {
+    const body = payload();
+    (body.data as Record<string, unknown>).description = 'x'.repeat(101 * 1024);
+
+    const response = await send(body);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true });
+    expect(storage.claimWebhookDelivery).toHaveBeenCalledOnce();
+    expect(storage.upsertTickets).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a payload larger than 1 MiB before claiming the delivery', async () => {
+    const body = payload();
+    (body.data as Record<string, unknown>).description = 'x'.repeat(1024 * 1024);
+
+    const response = await send(body);
+
+    expect(response.status).toBe(413);
+    expect(response.body).toEqual({ error: 'Payload too large' });
+    expect(storage.claimWebhookDelivery).not.toHaveBeenCalled();
+    expect(storage.upsertTickets).not.toHaveBeenCalled();
   });
 
   it('deletes explicitly archived issues', async () => {
