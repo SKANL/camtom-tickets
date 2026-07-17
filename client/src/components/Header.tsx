@@ -9,15 +9,15 @@ interface HeaderProps {
   title: string;
   isMuted: boolean;
   onToggleMute: () => void;
-  onToggleReport: () => void;
-  showReport: boolean;
+  onToggleReport?: () => void;
+  showReport?: boolean;
   isFriday: boolean;
   config?: ConfigResponse | null;
   activeTeam?: TeamBoardConfig;
   onOpenSettings?: () => void;
 }
 
-export function Header({ title, isMuted, onToggleMute, onToggleReport, showReport, isFriday, config, activeTeam, onOpenSettings }: HeaderProps) {
+export function Header({ title, isMuted, onToggleMute, onToggleReport, showReport = false, isFriday, config, activeTeam, onOpenSettings }: HeaderProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -177,7 +177,7 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
         )}
 
         {/* Toggle report button */}
-        <button
+        {onToggleReport && <button
           className="header-report-button"
           data-cuelume-press="toggle"
           onClick={onToggleReport}
@@ -207,7 +207,7 @@ export function Header({ title, isMuted, onToggleMute, onToggleReport, showRepor
           ) : (
             <><IconChart size={16} /><span className="control-label">Reporte</span></>
           )}
-        </button>
+        </button>}
 
         {/* Current time — styled like a kitchen clock, less competing orange */}
         <div

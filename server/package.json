@@ -9,6 +9,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "register:webhook": "ts-node-dev --transpile-only scripts/register-webhook.ts",
+    "probe:screen-control:hosted": "pnpm build && node dist/scripts/screen-control-hosted-probe.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

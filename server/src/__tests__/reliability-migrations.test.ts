@@ -7,6 +7,7 @@ describe('reconciliation reliability migrations', () => {
   const scheduler = readFileSync(resolve(__dirname, '../../../supabase/migrations/0007_reconcile_scheduler.sql'), 'utf8');
   const privileges = readFileSync(resolve(__dirname, '../../../supabase/migrations/0008_revoke_reconciliation_privileges.sql'), 'utf8');
   const finalizeRepair = readFileSync(resolve(__dirname, '../../../supabase/migrations/0009_fix_finalize_archived_ids.sql'), 'utf8');
+  const teamScope = readFileSync(resolve(__dirname, '../../../supabase/migrations/0010_team_scope_and_retention.sql'), 'utf8');
 
   it('keeps newer ticket rows and finalizes missing deletion with grace in one RPC', () => {
     expect(reliability).toContain('where excluded.updated_at > public.tickets.updated_at');
@@ -140,5 +141,107 @@ describe('reconciliation reliability migrations', () => {
     );
     expect(finalizeRepair).toContain(`grant execute on function ${signature} to service_role;`);
     expect(finalizeRepair).not.toContain("archived_ids text[] := '{}';");
+  });
+
+  it('fails closed to configured teams and bounds operational retention', () => {
+    const purgeScope = teamScope.slice(
+      teamScope.indexOf('create or replace function public.purge_tickets_outside_configured_scope'),
+      teamScope.indexOf('create or replace function public.purge_tickets_on_config_scope_change'),
+    );
+    expect(teamScope).toContain("add column if not exists team_id text generated always as (team ->> 'id') stored");
+    expect(teamScope).toContain('using (public.is_ticket_team_configured(team_id))');
+    expect(teamScope).toContain("raise exception 'configured team scope is missing or malformed'");
+    expect(teamScope).toMatch(/delete from public\.tickets\s+where id = incoming\.id and updated_at < incoming\.updated_at/);
+    expect(teamScope).toContain('Scope eviction is deliberately not a deletion tombstone');
+    expect(purgeScope).not.toContain('ticket_tombstones');
+    expect(teamScope).toContain('create trigger app_config_purge_ticket_scope');
+    expect(teamScope).toContain('create or replace function public.set_app_config_if_version');
+    expect(teamScope).toContain("raise exception 'app config version conflict'");
+    expect(teamScope).toContain('add column if not exists config_updated_at timestamptz');
+    expect(teamScope).toContain('current_config_updated_at is distinct from run_row.config_updated_at');
+    expect(teamScope).toContain("raise exception 'configured team scope version changed during reconciliation'");
+    expect(teamScope).toMatch(/select updated_at into current_config_updated_at[\s\S]*for share;/);
+    expect(teamScope).toMatch(/perform 1 from public\.app_config[\s\S]*for share;[\s\S]*for incoming in/);
+    expect(teamScope).toContain("processed_at < now() - interval '30 days'");
+    expect(teamScope).toContain("finished_at < now() - interval '90 days'");
+    expect(teamScope).toContain("deleted_at < now() - interval '730 days'");
+    expect(teamScope).toContain("'camtom-operational-retention'");
+    expect(teamScope).toContain('revoke all on function public.cleanup_operational_history() from public, anon, authenticated');
+  });
+
+  it('uses a durable event watermark to reject a late T1 snapshot after a T2 move-out', () => {
+    const upsert = teamScope.slice(
+      teamScope.indexOf('create or replace function public.upsert_tickets_if_newer'),
+      teamScope.indexOf('create or replace function public.set_app_config_if_version'),
+    );
+
+    expect(teamScope).toContain('create table if not exists public.ticket_scope_evictions');
+    expect(teamScope).toContain("cause in ('event-move-out', 'config-scope-purge')");
+    expect(teamScope).toContain('alter table public.ticket_scope_evictions enable row level security');
+    expect(teamScope).toContain(
+      'revoke all privileges on table public.ticket_scope_evictions from public, anon, authenticated',
+    );
+    expect(upsert).toMatch(/'event-move-out', null, clock_timestamp\(\)/);
+    expect(upsert).toContain(
+      'where excluded.watermark_updated_at > public.ticket_scope_evictions.watermark_updated_at',
+    );
+    expect(upsert).toMatch(
+      /scope_eviction\.cause = 'config-scope-purge'[\s\S]*incoming\.updated_at = scope_eviction\.watermark_updated_at/,
+    );
+    expect(upsert).toContain('incoming.updated_at > scope_eviction.watermark_updated_at');
+  });
+
+  it('allows a newer move-back and rejects delayed move-out events after restoration', () => {
+    const upsert = teamScope.slice(
+      teamScope.indexOf('create or replace function public.upsert_tickets_if_newer'),
+      teamScope.indexOf('create or replace function public.set_app_config_if_version'),
+    );
+
+    expect(upsert).toMatch(
+      /current_ticket_updated_at is not null\s+and incoming\.updated_at <= current_ticket_updated_at then\s+continue;/,
+    );
+    expect(upsert).toContain('where excluded.updated_at > public.tickets.updated_at');
+    expect(upsert).toMatch(
+      /if tombstone_at is null or incoming\.updated_at > tombstone_at then[\s\S]*delete from public\.ticket_scope_evictions\s+where ticket_id = incoming\.id;/,
+    );
+  });
+
+  it('restores an unchanged ticket after config re-add without weakening event move-out ordering', () => {
+    const purgeScope = teamScope.slice(
+      teamScope.indexOf('create or replace function public.purge_tickets_outside_configured_scope'),
+      teamScope.indexOf('create or replace function public.purge_tickets_on_config_scope_change'),
+    );
+    const upsert = teamScope.slice(
+      teamScope.indexOf('create or replace function public.upsert_tickets_if_newer'),
+      teamScope.indexOf('create or replace function public.set_app_config_if_version'),
+    );
+
+    expect(purgeScope).toContain("'config-scope-purge', config_version, clock_timestamp()");
+    expect(purgeScope).toMatch(/select updated_at into config_version[\s\S]*for share;/);
+    expect(purgeScope).toContain('perform pg_advisory_xact_lock(hashtextextended(ticket_row.id, 0))');
+    expect(purgeScope).toContain(
+      "where public.ticket_scope_evictions.cause = 'config-scope-purge'",
+    );
+    expect(purgeScope).not.toContain('ticket_tombstones');
+    expect(upsert).toMatch(
+      /scope_eviction\.cause = 'config-scope-purge'[\s\S]*incoming\.updated_at = scope_eviction\.watermark_updated_at[\s\S]*incoming\.team ->> 'id'\) is not distinct from scope_eviction\.team_id/,
+    );
+  });
+
+  it('keeps scope ordering markers outside retention and true delete tombstones distinct', () => {
+    const cleanup = teamScope.slice(
+      teamScope.indexOf('create or replace function public.cleanup_operational_history'),
+      teamScope.indexOf('do $$', teamScope.indexOf('create or replace function public.cleanup_operational_history')),
+    );
+    const finalize = teamScope.slice(
+      teamScope.indexOf('create or replace function public.finalize_full_reconcile'),
+      teamScope.indexOf('create or replace function public.cleanup_operational_history'),
+    );
+
+    expect(cleanup).not.toContain('ticket_scope_evictions');
+    expect(cleanup).toContain('ticket_tombstones');
+    expect(finalize).toContain('insert into public.ticket_tombstones');
+    expect(finalize).toContain("'linear-archived'");
+    expect(finalize).not.toContain('ticket_scope_evictions');
   });
 });

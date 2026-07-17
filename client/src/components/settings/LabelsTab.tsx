@@ -1,5 +1,5 @@
 import React from 'react';
-import { PriorityLabelConfig, KitchenPhrases, ZoneLabels } from '@camtom/shared';
+import { PriorityLabelConfig, KitchenPhrases, StateLabelConfig, ZoneLabels } from '@camtom/shared';
 import { PRIORITY_LEVELS, PRIORITY_BY_LEVEL } from '../../lib/priorities';
 import { Section, FieldRow, inputStyle } from './layout';
 
@@ -7,12 +7,14 @@ interface LabelsTabProps {
   priorityLabels: Record<number, Partial<PriorityLabelConfig>>;
   kitchenPhrases: KitchenPhrases;
   zoneLabels: ZoneLabels;
+  stateLabels: Record<string, StateLabelConfig>;
   setPriorityOverride: (priority: number, field: keyof PriorityLabelConfig, value: string) => void;
   setPhrase: (key: keyof KitchenPhrases, value: string) => void;
   setZone: (key: keyof ZoneLabels, value: string) => void;
+  setStateLabel: (state: string, field: keyof StateLabelConfig, value: string) => void;
 }
 
-export function LabelsTab({ priorityLabels, kitchenPhrases, zoneLabels, setPriorityOverride, setPhrase, setZone }: LabelsTabProps) {
+export function LabelsTab({ priorityLabels, kitchenPhrases, zoneLabels, stateLabels, setPriorityOverride, setPhrase, setZone, setStateLabel }: LabelsTabProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
       <Section label="Etiquetas de prioridad y colores">
@@ -45,6 +47,16 @@ export function LabelsTab({ priorityLabels, kitchenPhrases, zoneLabels, setPrior
             </div>
           );
         })}
+      </Section>
+
+      <Section label="Etiquetas de estado">
+        {Object.entries(stateLabels).map(([state, label]) => (
+          <div key={state} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ minWidth: 110, color: 'rgba(255,255,255,.55)', fontSize: 'var(--text-xs)' }}>{state}</span>
+            <input value={label.label} onChange={(event) => setStateLabel(state, 'label', event.target.value)} style={{ ...inputStyle, width: 150 }} />
+            <input value={label.icon} onChange={(event) => setStateLabel(state, 'icon', event.target.value)} style={{ ...inputStyle, width: 120 }} />
+          </div>
+        ))}
       </Section>
 
       <Section label="Títulos de zonas">

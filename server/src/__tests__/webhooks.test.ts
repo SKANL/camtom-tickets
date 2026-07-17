@@ -95,6 +95,16 @@ describe('Linear webhook reliability', () => {
     expect(storage.upsertTickets).not.toHaveBeenCalled();
   });
 
+  it('delegates an active issue scope transition to the database without a delete tombstone', async () => {
+    const body = payload();
+    (body.data as any).team = { id: 'other-team', name: 'Other' };
+    const response = await send(body);
+
+    expect(response.status).toBe(200);
+    expect(storage.upsertTickets).toHaveBeenCalledOnce();
+    expect(storage.deleteTicket).not.toHaveBeenCalled();
+  });
+
   it('releases failed deliveries so a retry can process them', async () => {
     vi.mocked(storage.upsertTickets).mockRejectedValueOnce(new Error('temporary'));
     const first = await send(payload());

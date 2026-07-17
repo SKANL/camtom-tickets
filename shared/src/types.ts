@@ -95,6 +95,7 @@ export interface ConfigResponse {
   slas: SLAConfig[];
   dashboard: DashboardConfig;
   version: string;
+  configV2?: ConfigV2;
 }
 
 export interface SelectOption {
@@ -119,6 +120,30 @@ export interface DisplayOptions {
   autoMute?: boolean;
 }
 
+export interface TeamDashboardSettings {
+  filter: TeamBoardConfig['filter'];
+  timer: boolean;
+  accent?: string;
+  slas: SLAConfig[];
+  teamMembers: string[];
+  displayOrder: number[];
+  priorityLabels: Record<number, PriorityLabelConfig>;
+  stateLabels: Record<string, StateLabelConfig>;
+  report: DashboardConfig['report'];
+  kitchenPhrases: KitchenPhrases;
+  zoneLabels: ZoneLabels;
+  displayOptions: DisplayOptions;
+}
+
+export interface ConfigV2 {
+  schemaVersion: 2;
+  global: {
+    title: string;
+    pollingInterval: number;
+  };
+  teams: Record<string, TeamDashboardSettings>;
+}
+
 export interface FilterState {
   projects: string[];
   assignees: string[];
@@ -127,6 +152,49 @@ export interface FilterState {
   priorities: number[];
   textSearch: string;
   excludeStates: string[];
+}
+
+export interface ScreenPaneState {
+  teamId: string;
+  view: 'board' | 'report';
+  filter: FilterState;
+}
+
+export interface ScreenState {
+  schemaVersion: 1;
+  layout: 'single' | 'split-vertical';
+  muted?: boolean;
+  /** Changes trigger an in-app remount; this never reloads the browser or OS. */
+  reloadNonce?: string;
+  panes: {
+    left: ScreenPaneState;
+    right: ScreenPaneState;
+  };
+}
+
+export type ScreenDeviceHealth = 'online' | 'unstable' | 'offline' | 'stale';
+
+export interface ScreenDevice {
+  id: string;
+  name: string | null;
+  desiredState: ScreenState | null;
+  stateVersion: number;
+  lastAppliedVersion: number;
+  lastSeenAt: string | null;
+  capabilities: Record<string, unknown>;
+  allowedTeamIds: string[];
+  pairedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  health: ScreenDeviceHealth;
+}
+
+export interface ScreenControlFeatures {
+  screenControlEnabled: boolean;
+  requirePairing: boolean;
+  captchaProvider: 'turnstile' | null;
+  captchaSiteKey: string | null;
+  configurationError: string | null;
 }
 
 export type TimerState = 'FRESH' | 'WARMING' | 'HEATING' | 'CRITICAL' | 'EXPIRED';

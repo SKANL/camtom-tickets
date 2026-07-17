@@ -5,7 +5,7 @@
  * The Express app is created and initialized on cold start, then
  * handled by Vercel's serverless adapter.
  */
-import { createApp, initServer } from '../server/src/app';
+import { createApp, initServer } from '../server/dist/app';
 
 const app = createApp();
 initServer();

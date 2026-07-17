@@ -1,28 +1,33 @@
 import React from 'react';
-import type { SettingsOverrides } from '../SettingsPanel';
 import { Section, FieldRow, inputStyle } from './layout';
 import { Button } from '../ui/Button';
 
 interface GeneralTabProps {
   title: string;
   slaWindowHours: number;
+  reportEnabled: boolean;
   teamMembers: string[];
   newMemberName: string;
   setNewMemberName: (value: string) => void;
   addTeamMember: (name: string) => void;
   removeTeamMember: (index: number) => void;
-  setOverride: <K extends keyof SettingsOverrides>(key: K, value: SettingsOverrides[K]) => void;
+  onTitleChange: (value: string) => void;
+  onSlaWindowHoursChange: (value: number) => void;
+  onReportEnabledChange: (value: boolean) => void;
 }
 
 export function GeneralTab({
   title,
   slaWindowHours,
+  reportEnabled,
   teamMembers,
   newMemberName,
   setNewMemberName,
   addTeamMember,
   removeTeamMember,
-  setOverride,
+  onTitleChange,
+  onSlaWindowHoursChange,
+  onReportEnabledChange,
 }: GeneralTabProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
@@ -30,9 +35,12 @@ export function GeneralTab({
         <FieldRow label="Título del panel">
           <input
             value={title}
-            onChange={(e) => setOverride('title', e.target.value)}
+            onChange={(e) => onTitleChange(e.target.value)}
             style={inputStyle}
           />
+        </FieldRow>
+        <FieldRow label="Reporte habilitado">
+          <input type="checkbox" checked={reportEnabled} onChange={(e) => onReportEnabledChange(e.target.checked)} />
         </FieldRow>
         <FieldRow label="Ventana SLA (horas)">
           <input
@@ -40,7 +48,7 @@ export function GeneralTab({
             min={1}
             max={168}
             value={slaWindowHours}
-            onChange={(e) => setOverride('slaWindowHours', Number(e.target.value))}
+            onChange={(e) => onSlaWindowHoursChange(Number(e.target.value))}
             style={{ ...inputStyle, width: 80 }}
           />
         </FieldRow>

@@ -15,6 +15,8 @@ import configRouter from './routes/config';
 import metadataRouter from './routes/metadata';
 import webhooksRouter from './routes/webhooks';
 import reconcileRouter from './routes/reconcile';
+import screensRouter from './routes/screens';
+import { getReconciliationHealth } from './supabase';
 
 export function createApp(): Application {
   const app: Application = express();
@@ -34,14 +36,29 @@ export function createApp(): Application {
     }),
   );
 
-  app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', uptime: process.uptime(), rateLimit: getRateLimitState() });
+  app.get('/api/health', async (_req, res) => {
+    try {
+      const reconciliation = await getReconciliationHealth();
+      res.json({ status: 'ok', uptime: process.uptime(), rateLimit: getRateLimitState(), reconciliation });
+    } catch {
+      res.status(503).json({
+        status: 'degraded',
+        uptime: process.uptime(),
+        rateLimit: getRateLimitState(),
+        reconciliation: {
+          scheduler: 'supabase-pg-cron',
+          fullApplyEnabled: process.env.FULL_RECONCILE_APPLY === 'true',
+          available: false,
+        },
+      });
+    }
   });
 
   app.use(configRouter);
   app.use(metadataRouter);
   app.use(webhooksRouter);
   app.use(reconcileRouter);
+  app.use(screensRouter);
 
   // In production the client is served as static files by Vercel; nothing to do here.
 

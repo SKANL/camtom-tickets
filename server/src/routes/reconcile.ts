@@ -8,7 +8,7 @@ import {
   deleteTicket,
   finalizeFullReconcile,
   finishReconcileRun,
-  getConfiguredReconcileTeamIds,
+  getConfiguredReconcileScope,
   getLastSync,
   getReconcileScopeState,
   getTicketsForTeams,
@@ -92,17 +92,27 @@ router.get('/api/cron/reconcile', async (req: Request, res: Response) => {
     acquired = await acquireReconcileLease('incremental', owner, INCREMENTAL_LEASE_TTL_SECONDS);
     if (!acquired) return res.status(409).json({ error: 'Incremental reconcile already running' });
 
+    const scope = await getConfiguredReconcileScope();
+    if (!scope || scope.teamIds.length === 0) {
+      return res.status(409).json({ error: 'Incremental reconcile scope is empty' });
+    }
+    const { teamIds, configUpdatedAt } = scope;
+
     runId = await createReconcileRun({
       kind: 'incremental',
+      scopeKey: reconcileScopeKey(teamIds),
+      teamIds,
       startedAt,
       upperBound: startedAt,
       dryRun: false,
+      configUpdatedAt,
     });
     const since = await getLastSync();
     const issues = await fetchIssuesSince(since);
     const active = issues.filter((issue) => !issue.archivedAt);
     const archived = issues.filter((issue) => !!issue.archivedAt);
 
+    // Scope filtering/eviction is intentionally atomic in the RPC against live app_config.
     for (const batch of batches(active)) await upsertTickets(batch.map(issueToRow));
     for (const issue of archived) await deleteTicket(issue.id, issue.updatedAt);
     await setLastSync(startedAt);
@@ -113,7 +123,7 @@ router.get('/api/cron/reconcile', async (req: Request, res: Response) => {
       archivedCount: archived.length,
     });
 
-    return res.status(200).json({ synced: active.length, archived: archived.length, since });
+    return res.status(200).json({ processed: active.length, archived: archived.length, since });
   } catch (err: any) {
     if (runId) await finishReconcileRun(runId, { status: 'failed', error: err.message }).catch(() => undefined);
     console.error(`[reconcile] Incremental failed: ${err.message}`);
@@ -145,19 +155,22 @@ router.get('/api/cron/reconcile/full', async (req: Request, res: Response) => {
     );
     if (!acquired) return res.status(409).json({ error: 'Full reconcile already running' });
 
-    const teamIds = await runSupabaseBeforeDeadline(
+    const scope = await runSupabaseBeforeDeadline(
       deadlineAt,
       'Full reconcile scope read',
-      (signal) => getConfiguredReconcileTeamIds(signal),
+      (signal) => getConfiguredReconcileScope(signal),
     );
-    if (teamIds.length === 0) return res.status(409).json({ error: 'Full reconcile scope is empty' });
+    if (!scope || scope.teamIds.length === 0) return res.status(409).json({ error: 'Full reconcile scope is empty' });
+    const { teamIds, configUpdatedAt } = scope;
 
     const scopeKey = reconcileScopeKey(teamIds);
     const dryRun = process.env.FULL_RECONCILE_APPLY !== 'true';
     runId = await runSupabaseBeforeDeadline(
       deadlineAt,
       'Full reconcile run creation',
-      (signal) => createReconcileRun({ kind: 'full', scopeKey, teamIds, startedAt, upperBound, dryRun }, signal),
+      (signal) => createReconcileRun({
+        kind: 'full', scopeKey, teamIds, startedAt, upperBound, dryRun, configUpdatedAt,
+      }, signal),
     );
     assertBeforeDeadline(deadlineAt);
     const snapshot = await fetchFullIssues(teamIds, upperBound, deadlineAt);

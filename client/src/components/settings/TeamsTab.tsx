@@ -1,70 +1,106 @@
 import React from 'react';
-import { TeamBoardConfig } from '@camtom/shared';
-import { Section, FieldRow, selectStyle } from './layout';
+import { ScreenState, TeamBoardConfig, TeamDashboardSettings } from '@camtom/shared';
+import { FieldRow, Section, inputStyle, selectStyle } from './layout';
 
 interface TeamsTabProps {
   teams: TeamBoardConfig[];
-  activeTeamId: string | undefined;
-  setActiveTeam: (id: string) => void;
-  setTeamField: (teamId: string, field: 'filter' | 'timer', value: string | boolean) => void;
+  selectedTeamId: string;
+  settings: TeamDashboardSettings;
+  screenState: ScreenState;
+  onSelectTeam: (id: string) => void;
+  onTeamChange: (patch: Partial<TeamDashboardSettings>) => void;
+  onScreenChange: (state: ScreenState) => void;
 }
 
-const FILTER_LABELS: Record<TeamBoardConfig['filter'], string> = {
-  'ticket-label': "Solo con label 'ticket'",
-  'active-states': 'Todos los del team',
-};
-
-export function TeamsTab({ teams, activeTeamId, setActiveTeam, setTeamField }: TeamsTabProps) {
-  if (teams.length === 0) {
-    return (
-      <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'var(--text-sm)' }}>
-        No hay teams configurados. Definilos en <code>config/dashboard.yaml</code>.
-      </div>
-    );
-  }
-
+export function TeamsTab({
+  teams,
+  selectedTeamId,
+  settings,
+  screenState,
+  onSelectTeam,
+  onTeamChange,
+  onScreenChange,
+}: TeamsTabProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
-      <Section label="Team activo">
-        <FieldRow label="Mostrar en el board">
+      <Section label="Pantalla de este navegador">
+        <FieldRow label="Layout">
           <select
-            value={activeTeamId ?? teams[0]?.id}
-            onChange={(e) => setActiveTeam(e.target.value)}
-            style={{ ...selectStyle, minWidth: 200 }}
+            value={screenState.layout}
+            onChange={(event) => onScreenChange({ ...screenState, layout: event.target.value as ScreenState['layout'] })}
+            style={selectStyle}
           >
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
+            <option value="single">Vista simple</option>
+            <option value="split-vertical">División vertical</option>
           </select>
         </FieldRow>
+        <FieldRow label="Panel izquierdo">
+          <TeamSelect
+            value={screenState.panes.left.teamId}
+            teams={teams}
+            onChange={(teamId) => onScreenChange({
+              ...screenState,
+              panes: { ...screenState.panes, left: { ...screenState.panes.left, teamId } },
+            })}
+          />
+        </FieldRow>
+        {screenState.layout === 'split-vertical' && (
+          <FieldRow label="Panel derecho">
+            <TeamSelect
+              value={screenState.panes.right?.teamId ?? teams[0]?.id ?? ''}
+              teams={teams}
+              onChange={(teamId) => onScreenChange({
+                ...screenState,
+                panes: {
+                  ...screenState.panes,
+                  right: {
+                    ...(screenState.panes.right ?? screenState.panes.left),
+                    teamId,
+                  },
+                },
+              })}
+            />
+          </FieldRow>
+        )}
+        <p style={{ color: 'rgba(255,255,255,.5)', fontSize: 'var(--text-xs)' }}>
+          Esta selección se guarda sólo en este navegador. El control remoto se agregará en una fase posterior.
+        </p>
       </Section>
 
-      <Section label="Criterio por team">
-        {teams.map((t) => (
-          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
-            <span style={{ minWidth: 150, fontFamily: 'var(--font-display)', fontSize: 'var(--text-sm)', color: 'rgba(255,255,255,0.7)' }}>
-              {t.name}
-            </span>
-            <select
-              value={t.filter}
-              onChange={(e) => setTeamField(t.id, 'filter', e.target.value)}
-              style={{ ...selectStyle, minWidth: 190 }}
-            >
-              <option value="active-states">{FILTER_LABELS['active-states']}</option>
-              <option value="ticket-label">{FILTER_LABELS['ticket-label']}</option>
-            </select>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', color: 'rgba(255,255,255,0.6)', fontSize: 'var(--text-sm)' }}>
-              <input
-                type="checkbox"
-                checked={t.timer !== false}
-                onChange={(e) => setTeamField(t.id, 'timer', e.target.checked)}
-                style={{ accentColor: 'var(--color-tomato)' }}
-              />
-              Timer
-            </label>
-          </div>
-        ))}
+      <Section label="Configuración independiente por team">
+        <FieldRow label="Editar team">
+          <TeamSelect value={selectedTeamId} teams={teams} onChange={onSelectTeam} />
+        </FieldRow>
+        <FieldRow label="Criterio">
+          <select
+            value={settings.filter}
+            onChange={(event) => onTeamChange({ filter: event.target.value as TeamDashboardSettings['filter'] })}
+            style={selectStyle}
+          >
+            <option value="active-states">Todos los estados activos</option>
+            <option value="ticket-label">Sólo con label ticket</option>
+          </select>
+        </FieldRow>
+        <FieldRow label="Timer">
+          <input type="checkbox" checked={settings.timer} onChange={(event) => onTeamChange({ timer: event.target.checked })} />
+        </FieldRow>
+        <FieldRow label="Color">
+          <input
+            type="color"
+            value={settings.accent ?? '#ff6347'}
+            onChange={(event) => onTeamChange({ accent: event.target.value })}
+            style={{ ...inputStyle, width: 56, padding: 2 }}
+          />
+        </FieldRow>
       </Section>
     </div>
+  );
+}
+
+function TeamSelect({ value, teams, onChange }: { value: string; teams: TeamBoardConfig[]; onChange: (id: string) => void }) {
+  return (
+    <select value={value} onChange={(event) => onChange(event.target.value)} style={{ ...selectStyle, minWidth: 220 }}>
+      {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+    </select>
   );
 }

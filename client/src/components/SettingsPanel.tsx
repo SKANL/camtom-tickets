@@ -1,9 +1,20 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { ConfigResponse, PriorityLabelConfig, KitchenPhrases, ZoneLabels, TeamBoardConfig, SLAConfig, DisplayOptions } from '@camtom/shared';
-import { IconX, IconSettings, IconCheckmark } from './Icons';
-import { PRIORITY_LEVELS } from '../lib/priorities';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ConfigResponse,
+  ConfigV2,
+  DisplayOptions,
+  KitchenPhrases,
+  PriorityLabelConfig,
+  SLAConfig,
+  ScreenState,
+  TeamDashboardSettings,
+  ZoneLabels,
+  createConfigV2,
+  validateConfigV2,
+} from '@camtom/shared';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
+import { IconCheckmark, IconSettings, IconX } from './Icons';
 import { GeneralTab } from './settings/GeneralTab';
 import { TeamsTab } from './settings/TeamsTab';
 import { DisplayTab } from './settings/DisplayTab';
@@ -12,598 +23,446 @@ import { LabelsTab } from './settings/LabelsTab';
 import { SoundsTab } from './settings/SoundsTab';
 import { ConfigAdminError, readAdminToken, storeAdminToken, updateServerConfig } from '../lib/config-admin';
 
-const SETTINGS_STORAGE_KEY = 'camtom-settings-overrides';
-
-export interface SettingsOverrides {
-  title?: string;
-  teamMembers?: string[];
-  priorityLabels?: Record<number, Partial<PriorityLabelConfig>>;
-  kitchenPhrases?: Partial<KitchenPhrases>;
-  zoneLabels?: Partial<ZoneLabels>;
-  teams?: TeamBoardConfig[];
-  activeTeamId?: string;
-  slaWindowHours?: number;
-  displayOptions?: Partial<DisplayOptions>;
-}
-
-interface SettingsPanelProps {
-  config: ConfigResponse | null;
-  onApply: (overrides: SettingsOverrides) => void;
-  onClose: () => void;
-}
-
-function loadOverrides(): SettingsOverrides {
-  try {
-    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw);
-  } catch {
-    return {};
-  }
-}
-
-function saveOverrides(overrides: SettingsOverrides): void {
-  try {
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(overrides));
-  } catch {
-    // localStorage may be full
-  }
-}
-
 type TabId = 'general' | 'teams' | 'display' | 'sla' | 'labels' | 'sounds';
-
 const TABS: { id: TabId; label: string }[] = [
   { id: 'general', label: 'General' },
-  { id: 'teams', label: 'Teams' },
-  { id: 'display', label: 'Pantalla' },
+  { id: 'teams', label: 'Teams y pantalla' },
+  { id: 'display', label: 'Visual' },
   { id: 'sla', label: 'SLA' },
-  { id: 'labels', label: 'Etiquetas y frases' },
+  { id: 'labels', label: 'Etiquetas' },
   { id: 'sounds', label: 'Sonidos' },
 ];
 
-export function SettingsPanel({ config, onApply, onClose }: SettingsPanelProps) {
-  const [overrides, setOverrides] = useState<SettingsOverrides>(loadOverrides);
-  const [activeTab, setActiveTab] = useState<TabId>('general');
+interface SettingsPanelProps {
+  config: ConfigResponse;
+  screenState: ScreenState;
+  onApplyConfig: (config: ConfigResponse) => void;
+  onSavedConfig: (config: ConfigResponse) => void;
+  onScreenStateChange: (state: ScreenState) => void;
+  onClose: () => void;
+}
+
+export function buildConfigV2SaveBody(
+  configV2: ConfigV2,
+  expectedVersion: string,
+): { configV2: ConfigV2; expectedVersion: string } {
+  return { configV2, expectedVersion };
+}
+
+export function applyConfigV2Preview(config: ConfigResponse, configV2: ConfigV2): ConfigResponse {
+  return { ...config, configV2 };
+}
+
+export interface ConfigMergeConflict {
+  path: string[];
+  base: unknown;
+  local: unknown;
+  remote: unknown;
+}
+
+export function threeWayMergeConfigV2(
+  base: ConfigV2,
+  draft: ConfigV2,
+  latest: ConfigV2,
+): { merged: ConfigV2; conflicts: ConfigMergeConflict[] } {
+  const conflicts: ConfigMergeConflict[] = [];
+  const merged = mergeConfigNode(base, draft, latest, [], conflicts) as ConfigV2;
+  return { merged, conflicts };
+}
+
+export function resolveConfigMergeConflict(
+  config: ConfigV2,
+  conflict: ConfigMergeConflict,
+  choice: 'local' | 'remote',
+): ConfigV2 {
+  const next = cloneValue(config);
+  setValueAtPath(next as unknown as Record<string, unknown>, conflict.path, conflict[choice]);
+  return next;
+}
+
+export function SettingsPanel({
+  config,
+  screenState,
+  onApplyConfig,
+  onSavedConfig,
+  onScreenStateChange,
+  onClose,
+}: SettingsPanelProps) {
+  const baseConfig = useRef(config).current;
+  const baseV2 = useRef(config.configV2 ?? createConfigV2(config)).current;
+  const savedConfigRef = useRef<ConfigResponse | null>(null);
+  const [previewBase, setPreviewBase] = useState<ConfigResponse>(() => baseConfig);
+  const teams = previewBase.dashboard.teams ?? [];
+  const [draft, setDraft] = useState<ConfigV2>(() => baseV2);
+  const [mergeBase, setMergeBase] = useState<ConfigV2>(() => baseV2);
+  const [mergeConflicts, setMergeConflicts] = useState<ConfigMergeConflict[]>([]);
+  const [observedVersion, setObservedVersion] = useState(config.version);
+  const [conflictConfig, setConflictConfig] = useState<ConfigResponse | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState(
+    screenState.panes.left.teamId || teams[0]?.id || '',
+  );
+  const [activeTab, setActiveTab] = useState<TabId>('teams');
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [adminToken, setAdminToken] = useState(readAdminToken);
-
-  // Sound preview state
-  const [previewVolume, setPreviewVolume] = useState(0.5);
-
-  // SLA editing state
-  const [slaRules, setSlaRules] = useState<SLAConfig[]>(() => config?.slas ?? []);
+  const [newMemberName, setNewMemberName] = useState('');
   const [editingSla, setEditingSla] = useState<SLAConfig | null>(null);
   const [slaValidation, setSlaValidation] = useState<string | null>(null);
+  const [previewVolume, setPreviewVolume] = useState(0.5);
 
-  // Derived values
-  const title = overrides.title ?? config?.dashboard?.title ?? 'Panel de Soporte Camtom';
-  const teamMembers = overrides.teamMembers ?? config?.dashboard?.teamMembers ?? [];
-  const kitchenPhrases = { ...config?.dashboard?.kitchenPhrases, ...overrides.kitchenPhrases } as KitchenPhrases;
-  const zoneLabels = {
-    new: 'Sin tomar',
-    active: 'En progreso',
-    done: 'Servidos hoy',
-    ...config?.dashboard?.zoneLabels,
-    ...overrides.zoneLabels,
-  } as ZoneLabels;
-  const teams: TeamBoardConfig[] = overrides.teams ?? config?.dashboard?.teams ?? [];
-  const activeTeamId = overrides.activeTeamId ?? config?.dashboard?.activeTeamId ?? teams[0]?.id;
-  const slaWindowHours = overrides.slaWindowHours ?? config?.dashboard?.report?.slaWindowHours ?? 24;
-  const displayOptions: Partial<DisplayOptions> = {
-    ...config?.dashboard?.displayOptions,
-    ...overrides.displayOptions,
-  };
+  const settings = draft.teams[selectedTeamId] ?? baseV2.teams[selectedTeamId];
+  const selectedName = teams.find((team) => team.id === selectedTeamId)?.name ?? 'Team';
+  const handleClose = useCallback(() => {
+    onApplyConfig(savedConfigRef.current ?? baseConfig);
+    onClose();
+  }, [baseConfig, onApplyConfig, onClose]);
 
-  // Merge priority labels
-  const priorityLabels: Record<number, Partial<PriorityLabelConfig>> = {};
-  for (const pk of PRIORITY_LEVELS) {
-    priorityLabels[pk] = {
-      ...config?.dashboard?.priorityLabels?.[pk],
-      ...overrides.priorityLabels?.[pk],
-    };
-  }
+  useEffect(() => {
+    onApplyConfig(applyConfigV2Preview(previewBase, draft));
+  }, [draft, onApplyConfig, previewBase]);
 
-  const setOverride = useCallback(<K extends keyof SettingsOverrides>(key: K, value: SettingsOverrides[K]) => {
-    setOverrides((prev) => {
-      const next = { ...prev, [key]: value };
-      saveOverrides(next);
-      return next;
-    });
-  }, []);
-
-  const setNestedOverride = useCallback(<K extends keyof SettingsOverrides>(key: K, subKey: string, value: any) => {
-    setOverrides((prev) => {
-      const current = (prev[key] as any) ?? {};
-      const next = { ...prev, [key]: { ...current, [subKey]: value } };
-      saveOverrides(next);
-      return next;
-    });
-  }, []);
-
-  const setPriorityOverride = useCallback((priority: number, field: keyof PriorityLabelConfig, value: string) => {
-    setOverrides((prev) => {
-      const current = prev.priorityLabels?.[priority] ?? {};
-      const next = {
-        ...prev,
-        priorityLabels: {
-          ...prev.priorityLabels,
-          [priority]: { ...current, [field]: value },
-        },
-      };
-      saveOverrides(next);
-      return next;
-    });
-  }, []);
-
-  const setPhrase = useCallback((key: keyof KitchenPhrases, value: string) => {
-    setOverrides((prev) => {
-      const next = {
-        ...prev,
-        kitchenPhrases: { ...prev.kitchenPhrases, [key]: value },
-      };
-      saveOverrides(next);
-      return next;
-    });
-  }, []);
-
-  const setZone = useCallback((key: keyof ZoneLabels, value: string) => {
-    setOverrides((prev) => {
-      const next = {
-        ...prev,
-        zoneLabels: { ...prev.zoneLabels, [key]: value },
-      };
-      saveOverrides(next);
-      return next;
-    });
-  }, []);
-
-  const setActiveTeam = useCallback((id: string) => setOverride('activeTeamId', id), [setOverride]);
-
-  const setTeamField = useCallback((teamId: string, field: 'filter' | 'timer', value: string | boolean) => {
-    setOverrides((prev) => {
-      const base = prev.teams ?? config?.dashboard?.teams ?? [];
-      const nextTeams = base.map((t) => (t.id === teamId ? { ...t, [field]: value } : t));
-      const next = { ...prev, teams: nextTeams };
-      saveOverrides(next);
-      return next;
-    });
-  }, [config]);
-
-  const addTeamMember = useCallback((name: string) => {
-    if (!name.trim()) return;
-    setOverrides((prev) => {
-      const next = {
-        ...prev,
-        teamMembers: [...(prev.teamMembers ?? teamMembers), name.trim()],
-      };
-      saveOverrides(next);
-      return next;
-    });
-  }, [teamMembers]);
-
-  const removeTeamMember = useCallback((index: number) => {
-    setOverrides((prev) => {
-      const current = prev.teamMembers ?? teamMembers;
-      const next = {
-        ...prev,
-        teamMembers: current.filter((_, i) => i !== index),
-      };
-      saveOverrides(next);
-      return next;
-    });
-  }, [teamMembers]);
-
-  const [newMemberName, setNewMemberName] = useState('');
-
-  // SLA handlers
-  const handleAddSla = () => {
-    const newSla: SLAConfig = {
-      id: `sla_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      label: 'Nueva SLA',
-      applicablePriorities: [1, 2],
-      maxMinutes: 30,
-      warningThresholds: { warming: 0.6, heating: 0.3, critical: 0.1 },
-    };
-    setSlaRules([...slaRules, newSla]);
-    setEditingSla(newSla);
-  };
-
-  const handleRemoveSla = (id: string) => {
-    setSlaRules(slaRules.filter((s) => s.id !== id));
-    if (editingSla?.id === id) setEditingSla(null);
-  };
-
-  const handleSaveSla = (sla: SLAConfig) => {
-    // Validate
-    if (sla.maxMinutes < 1) {
-      setSlaValidation('Los minutos deben ser ≥ 1');
-      return;
-    }
-    if (!sla.label.trim()) {
-      setSlaValidation('La etiqueta es obligatoria');
-      return;
-    }
-    if (sla.applicablePriorities.length === 0) {
-      setSlaValidation('Elegí al menos una prioridad');
-      return;
-    }
-    setSlaValidation(null);
-    setSlaRules(slaRules.map((s) => (s.id === sla.id ? sla : s)));
+  useEffect(() => {
     setEditingSla(null);
-  };
+    setSlaValidation(null);
+  }, [selectedTeamId]);
 
-  const toggleSlaPriority = (sla: SLAConfig, priority: number) => {
-    const next = sla.applicablePriorities.includes(priority)
-      ? sla.applicablePriorities.filter((p) => p !== priority)
-      : [...sla.applicablePriorities, priority];
-    setEditingSla({ ...sla, applicablePriorities: next });
-  };
-
-  // Sound preview
-  const handlePreviewSound = (soundName: string) => {
-    try {
-      (window as any).cuelume?.play(soundName);
-    } catch {
-      // ignore
+  useEffect(() => {
+    if (!teams.some((team) => team.id === selectedTeamId) && teams[0]) {
+      setSelectedTeamId(teams[0].id);
     }
+  }, [selectedTeamId, teams]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') handleClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [handleClose]);
+
+  const updateTeam = useCallback((patch: Partial<TeamDashboardSettings>) => {
+    setDraft((current) => ({
+      ...current,
+      teams: {
+        ...current.teams,
+        [selectedTeamId]: { ...(current.teams[selectedTeamId] ?? baseV2.teams[selectedTeamId]), ...patch },
+      },
+    }));
+  }, [baseV2.teams, selectedTeamId]);
+
+  const priorityLabels = useMemo<Record<number, Partial<PriorityLabelConfig>>>(
+    () => settings.priorityLabels,
+    [settings.priorityLabels],
+  );
+
+  const addTeamMember = (name: string) => {
+    const trimmed = name.trim();
+    if (trimmed) updateTeam({ teamMembers: [...settings.teamMembers, trimmed] });
+  };
+  const removeTeamMember = (index: number) => {
+    updateTeam({ teamMembers: settings.teamMembers.filter((_, current) => current !== index) });
+  };
+  const setPriority = (priority: number, field: keyof PriorityLabelConfig, value: string) => {
+    updateTeam({
+      priorityLabels: {
+        ...settings.priorityLabels,
+        [priority]: { ...settings.priorityLabels[priority], [field]: value },
+      },
+    });
+  };
+  const setPhrase = (key: keyof KitchenPhrases, value: string) => {
+    updateTeam({ kitchenPhrases: { ...settings.kitchenPhrases, [key]: value } });
+  };
+  const setZone = (key: keyof ZoneLabels, value: string) => {
+    updateTeam({ zoneLabels: { ...settings.zoneLabels, [key]: value } });
+  };
+  const setStateLabel = (state: string, field: 'label' | 'icon', value: string) => {
+    updateTeam({ stateLabels: { ...settings.stateLabels, [state]: { ...settings.stateLabels[state], [field]: value } } });
+  };
+  const handleSaveSla = (sla: SLAConfig) => {
+    if (!sla.label.trim() || sla.maxMinutes < 1 || sla.applicablePriorities.length === 0) {
+      setSlaValidation('Completá etiqueta, minutos y al menos una prioridad');
+      return;
+    }
+    updateTeam({ slas: settings.slas.map((item) => item.id === sla.id ? sla : item) });
+    setEditingSla(null);
+    setSlaValidation(null);
   };
 
-  // Reset
-  const handleReset = () => {
-    localStorage.removeItem(SETTINGS_STORAGE_KEY);
-    setOverrides({});
-    onApply({});
-  };
-
-  // Save to server
   const handleSaveToServer = async () => {
+    if (mergeConflicts.length > 0) {
+      setSaveStatus('Error: Resolvé todos los conflictos antes de guardar');
+      return;
+    }
     if (!adminToken.trim()) {
       setSaveStatus('Error: Ingresá la clave de administración');
+      return;
+    }
+    const errors = validateConfigV2(draft, teams.map((team) => team.id));
+    if (errors.length) {
+      setSaveStatus(`Error: ${errors.join('; ')}`);
       return;
     }
     setSaving(true);
     setSaveStatus(null);
     try {
-      const body: Record<string, any> = {};
-
-      // Build dashboard update from overrides
-      const dashUpdate: Record<string, any> = {};
-      if (overrides.title !== undefined) dashUpdate.title = overrides.title;
-      if (overrides.teamMembers !== undefined) dashUpdate.teamMembers = overrides.teamMembers;
-      if (overrides.kitchenPhrases !== undefined) dashUpdate.kitchenPhrases = overrides.kitchenPhrases;
-      if (overrides.zoneLabels !== undefined) {
-        dashUpdate.zoneLabels = { ...config?.dashboard?.zoneLabels, ...overrides.zoneLabels };
-      }
-      if (overrides.teams !== undefined) dashUpdate.teams = overrides.teams;
-      if (overrides.activeTeamId !== undefined) dashUpdate.activeTeamId = overrides.activeTeamId;
-      if (overrides.displayOptions !== undefined) {
-        dashUpdate.displayOptions = {
-          ...config?.dashboard?.displayOptions,
-          ...overrides.displayOptions,
-        };
-      }
-      if (overrides.priorityLabels !== undefined) {
-        dashUpdate.priorityLabels = {};
-        for (const pk of PRIORITY_LEVELS) {
-          if (overrides.priorityLabels[pk]) {
-            dashUpdate.priorityLabels[pk] = {
-              ...config?.dashboard?.priorityLabels?.[pk],
-              ...overrides.priorityLabels[pk],
-            };
-          }
-        }
-      }
-      if (overrides.slaWindowHours !== undefined) {
-        dashUpdate.report = {
-          ...config?.dashboard?.report,
-          slaWindowHours: overrides.slaWindowHours,
-        };
-      }
-
-      if (Object.keys(dashUpdate).length > 0) {
-        body.dashboard = dashUpdate;
-      }
-
-      // Include SLA rules
-      const hasSlaChanges = slaRules.length > 0 && JSON.stringify(slaRules) !== JSON.stringify(config?.slas);
-      if (hasSlaChanges) {
-        body.slas = slaRules;
-      }
-
-      await updateServerConfig(body, adminToken);
-
+      const saved = await updateServerConfig(buildConfigV2SaveBody(draft, observedVersion), adminToken);
+      const savedV2 = saved.configV2 ?? createConfigV2(saved);
+      setDraft(savedV2);
+      setMergeBase(savedV2);
+      setMergeConflicts([]);
+      setPreviewBase(saved);
+      setObservedVersion(saved.version);
+      setConflictConfig(null);
+      savedConfigRef.current = saved;
+      onSavedConfig(saved);
+      onApplyConfig(saved);
       setSaveStatus('saved');
-      setTimeout(() => setSaveStatus(null), 3000);
-    } catch (err: any) {
-      if (err instanceof ConfigAdminError && err.status === 401) setAdminToken('');
-      setSaveStatus(`Error: ${err.message}`);
+    } catch (error) {
+      if (error instanceof ConfigAdminError && error.status === 401) setAdminToken('');
+      if (error instanceof ConfigAdminError && error.status === 409 && error.currentConfig) {
+        setConflictConfig(error.currentConfig);
+      }
+      setSaveStatus(`Error: ${error instanceof Error ? error.message : 'No se pudo guardar'}`);
     } finally {
       setSaving(false);
     }
   };
 
-  // Apply settings to parent on every change
-  useEffect(() => {
-    onApply(overrides);
-  }, [overrides, onApply]);
-
-  // Close on Escape
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  const handleResolveConflict = (conflict: ConfigMergeConflict, choice: 'local' | 'remote') => {
+    setDraft((current) => resolveConfigMergeConflict(current, conflict, choice));
+    setMergeConflicts((current) => {
+      const path = conflict.path.join('.');
+      const next = current.filter((item) => item.path.join('.') !== path);
+      setSaveStatus(next.length > 0
+        ? `Quedan ${next.length} conflicto(s) por resolver.`
+        : 'Conflictos resueltos; revisá el borrador antes de guardar.');
+      return next;
+    });
+  };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 1000,
-        background: 'rgba(0,0,0,0.75)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backdropFilter: 'blur(4px)',
-      }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Configuración del panel"
-        style={{
-          background: '#1A0F0A',
-          border: '2px solid rgba(255,99,71,0.3)',
-          borderRadius: 'var(--radius-card)',
-          width: '90vw',
-          maxWidth: 800,
-          maxHeight: '85vh',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            background: 'linear-gradient(180deg, #2C1810 0%, #1A0F0A 100%)',
-            padding: 'var(--space-lg) var(--space-xl)',
-            borderBottom: '2px solid rgba(255,99,71,0.2)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexShrink: 0,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <IconSettings size={24} style={{ color: 'var(--color-tomato)' }} />
-            <h2
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 'var(--text-2xl)',
-                color: 'var(--color-mayo)',
-                margin: 0,
-                letterSpacing: '0.05em',
-              }}
-            >
-              Configuración del panel
-            </h2>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'rgba(255,255,255,0.08)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '50%',
-              width: 36,
-              height: 36,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'rgba(255,255,255,0.6)',
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
-          >
-            <IconX size={18} />
-          </button>
+    <div className="settings-backdrop" onClick={(event) => { if (event.target === event.currentTarget) handleClose(); }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="settings-title" className="settings-dialog">
+        <div className="settings-header">
+          <h2 id="settings-title"><IconSettings size={22} /> Configuración</h2>
+          <button autoFocus aria-label="Cerrar configuración" onClick={handleClose}><IconX size={18} /></button>
         </div>
-
-        {/* Tabs */}
-        <div
-          style={{
-            display: 'flex',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
-            padding: '0 var(--space-xl)',
-            flexShrink: 0,
-          }}
-        >
+        <div className="settings-team-context">
+          Editando: <strong>{selectedName}</strong>. General conserva branding; las demás opciones se guardan por team.
+        </div>
+        <div role="tablist" aria-label="Secciones de configuración" className="settings-tabs">
           {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                borderBottom: activeTab === tab.id ? '2px solid var(--color-tomato)' : '2px solid transparent',
-                padding: 'var(--space-sm) var(--space-md)',
-                cursor: 'pointer',
-                color: activeTab === tab.id ? 'var(--color-tomato)' : 'rgba(255,255,255,0.5)',
-                fontFamily: 'var(--font-display)',
-                fontSize: 'var(--text-sm)',
-                letterSpacing: '0.05em',
-                transition: 'all 0.2s',
-              }}
-            >
+            <button key={tab.id} role="tab" aria-selected={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>
               {tab.label}
             </button>
           ))}
         </div>
-
-        {/* Scrollable content */}
-        <div
-          style={{
-            padding: 'var(--space-xl)',
-            overflow: 'auto',
-            flex: 1,
-          }}
-        >
+        <div className="settings-content">
           {activeTab === 'general' && (
             <GeneralTab
-              title={title}
-              slaWindowHours={slaWindowHours}
-              teamMembers={teamMembers}
+              title={draft.global.title}
+              slaWindowHours={settings.report.slaWindowHours}
+              reportEnabled={settings.report.enabled}
+              teamMembers={settings.teamMembers}
               newMemberName={newMemberName}
               setNewMemberName={setNewMemberName}
               addTeamMember={addTeamMember}
               removeTeamMember={removeTeamMember}
-              setOverride={setOverride}
+              onTitleChange={(title) => setDraft((current) => ({ ...current, global: { ...current.global, title } }))}
+              onSlaWindowHoursChange={(slaWindowHours) => updateTeam({ report: { ...settings.report, slaWindowHours } })}
+              onReportEnabledChange={(enabled) => updateTeam({ report: { ...settings.report, enabled } })}
             />
           )}
-
           {activeTab === 'teams' && (
             <TeamsTab
               teams={teams}
-              activeTeamId={activeTeamId}
-              setActiveTeam={setActiveTeam}
-              setTeamField={setTeamField}
+              selectedTeamId={selectedTeamId}
+              settings={settings}
+              screenState={screenState}
+              onSelectTeam={setSelectedTeamId}
+              onTeamChange={updateTeam}
+              onScreenChange={onScreenStateChange}
             />
           )}
-
           {activeTab === 'display' && (
             <DisplayTab
-              displayOptions={displayOptions}
-              setNestedOverride={setNestedOverride}
+              displayOptions={settings.displayOptions}
+              displayOrder={settings.displayOrder}
+              onChange={(key, value) => updateTeam({ displayOptions: { ...settings.displayOptions, [key]: value } as DisplayOptions })}
+              onDisplayOrderChange={(displayOrder) => updateTeam({ displayOrder })}
             />
           )}
-
           {activeTab === 'sla' && (
             <SlaTab
-              slaRules={slaRules}
+              slaRules={settings.slas}
               editingSla={editingSla}
               slaValidation={slaValidation}
-              handleAddSla={handleAddSla}
-              handleRemoveSla={handleRemoveSla}
+              handleAddSla={() => {
+                const next: SLAConfig = { id: `sla_${Date.now()}`, label: 'Nueva SLA', applicablePriorities: [1, 2], maxMinutes: 30, warningThresholds: { warming: .6, heating: .3, critical: .1 } };
+                updateTeam({ slas: [...settings.slas, next] });
+                setEditingSla(next);
+              }}
+              handleRemoveSla={(id) => updateTeam({ slas: settings.slas.filter((sla) => sla.id !== id) })}
               handleSaveSla={handleSaveSla}
-              toggleSlaPriority={toggleSlaPriority}
+              toggleSlaPriority={(sla, priority) => setEditingSla({
+                ...sla,
+                applicablePriorities: sla.applicablePriorities.includes(priority)
+                  ? sla.applicablePriorities.filter((value) => value !== priority)
+                  : [...sla.applicablePriorities, priority],
+              })}
               setEditingSla={setEditingSla}
             />
           )}
-
           {activeTab === 'labels' && (
             <LabelsTab
               priorityLabels={priorityLabels}
-              kitchenPhrases={kitchenPhrases}
-              zoneLabels={zoneLabels}
-              setPriorityOverride={setPriorityOverride}
+              kitchenPhrases={settings.kitchenPhrases}
+              zoneLabels={settings.zoneLabels}
+              stateLabels={settings.stateLabels}
+              setPriorityOverride={setPriority}
               setPhrase={setPhrase}
               setZone={setZone}
+              setStateLabel={setStateLabel}
             />
           )}
-
           {activeTab === 'sounds' && (
             <SoundsTab
               previewVolume={previewVolume}
               setPreviewVolume={setPreviewVolume}
-              handlePreviewSound={handlePreviewSound}
+              handlePreviewSound={(name) => { try { (window as any).cuelume?.play(name); } catch {} }}
             />
           )}
         </div>
-
-        <div
-          style={{
-            padding: 'var(--space-sm) var(--space-xl)',
-            borderTop: '1px solid rgba(255,255,255,0.08)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            flexWrap: 'wrap',
-          }}
-        >
-          <label htmlFor="config-admin-token" style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.65)' }}>
-            Clave de administración
-          </label>
+        <div className="settings-admin">
+          <label htmlFor="config-admin-token">Clave de administración</label>
           <input
             id="config-admin-token"
             type="password"
             autoComplete="current-password"
             value={adminToken}
-            onChange={(event) => {
-              const value = event.target.value;
-              setAdminToken(value);
-              storeAdminToken(value);
-            }}
-            placeholder="Necesaria para guardar en servidor"
-            style={{
-              flex: '1 1 240px',
-              minHeight: 44,
-              borderRadius: 'var(--radius-sm)',
-              border: '1px solid rgba(255,255,255,0.15)',
-              background: 'rgba(0,0,0,0.25)',
-              color: 'var(--color-mayo)',
-              padding: '8px 12px',
-            }}
+            onChange={(event) => { setAdminToken(event.target.value); storeAdminToken(event.target.value); }}
           />
-          <span style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.4)' }}>
-            Se conserva sólo durante esta sesión.
-          </span>
         </div>
-
-        {/* Footer actions */}
-        <div
-          style={{
-            padding: 'var(--space-md) var(--space-xl)',
-            borderTop: '1px solid rgba(255,255,255,0.08)',
-            display: 'flex',
-            gap: 12,
-            justifyContent: 'flex-end',
-            alignItems: 'center',
-            flexShrink: 0,
-          }}
-        >
-          {saveStatus && saveStatus !== 'saved' && (
-            <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--color-ketchup)', marginRight: 'auto' }}>
-              {saveStatus}
-            </div>
+        {mergeConflicts.length > 0 && (
+          <div className="settings-conflicts" role="alert" aria-label="Conflictos de configuración">
+            <strong>Resolvé {mergeConflicts.length} conflicto(s) antes de guardar:</strong>
+            {mergeConflicts.map((conflict) => (
+              <div key={conflict.path.join('.')} className="settings-conflict-row">
+                <code>{conflict.path.join('.')}</code>
+                <Button variant="secondary" onClick={() => handleResolveConflict(conflict, 'remote')}>Usar cambio remoto</Button>
+                <Button variant="secondary" onClick={() => handleResolveConflict(conflict, 'local')}>Usar mi cambio</Button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="settings-footer">
+          {saveStatus && saveStatus !== 'saved' && <span role="alert">{saveStatus}</span>}
+          {saveStatus === 'saved' && <Badge><IconCheckmark size={12} /> Guardado</Badge>}
+          {conflictConfig && (
+            <>
+              <Button variant="secondary" onClick={() => {
+                const latest = conflictConfig.configV2 ?? createConfigV2(conflictConfig);
+                setDraft(latest);
+                setMergeBase(latest);
+                setMergeConflicts([]);
+                setPreviewBase(conflictConfig);
+                setObservedVersion(conflictConfig.version);
+                onSavedConfig(conflictConfig);
+                onApplyConfig(conflictConfig);
+                setConflictConfig(null);
+                setSaveStatus('Se cargó la última versión; tu borrador fue descartado.');
+              }}>Cargar última versión</Button>
+              <Button variant="secondary" onClick={() => {
+                const latest = conflictConfig.configV2 ?? createConfigV2(conflictConfig);
+                const result = threeWayMergeConfigV2(mergeBase, draft, latest);
+                setDraft(result.merged);
+                setMergeBase(latest);
+                setMergeConflicts(result.conflicts);
+                setPreviewBase(conflictConfig);
+                setObservedVersion(conflictConfig.version);
+                onSavedConfig(conflictConfig);
+                onApplyConfig(applyConfigV2Preview(conflictConfig, result.merged));
+                setConflictConfig(null);
+                setSaveStatus(result.conflicts.length > 0
+                  ? `Hay ${result.conflicts.length} conflicto(s) que requieren tu decisión.`
+                  : 'Borrador rebasado sin conflictos; revisalo antes de guardar.');
+              }}>Rebasar borrador</Button>
+            </>
           )}
-          {saveStatus === 'saved' && (
-            <Badge style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-body)', color: 'var(--color-lettuce)', marginRight: 'auto' }}>
-              <IconCheckmark size={12} /> Guardado
-            </Badge>
-          )}
-          <Button
-            variant="secondary"
-            onClick={handleReset}
-            style={{ padding: '8px 20px', fontSize: 'var(--text-sm)', letterSpacing: '0.05em' }}
-          >
-            Restablecer valores
-          </Button>
-          <Button
-            variant="primary"
-            onClick={handleSaveToServer}
-            disabled={saving}
-            style={{
-              background: saving ? 'rgba(255,99,71,0.5)' : 'var(--color-tomato)',
-              cursor: saving ? 'wait' : 'pointer',
-              padding: '8px 24px',
-              fontSize: 'var(--text-sm)',
-              letterSpacing: '0.05em',
-            }}
-          >
-            {saving ? 'Guardando...' : 'Guardar en servidor'}
+          <Button variant="secondary" onClick={handleClose}>Cerrar</Button>
+          <Button variant="primary" onClick={handleSaveToServer} disabled={saving || mergeConflicts.length > 0}>
+            {saving ? 'Guardando…' : 'Guardar en servidor'}
           </Button>
         </div>
       </div>
     </div>
   );
+}
+
+function mergeConfigNode(
+  base: unknown,
+  local: unknown,
+  remote: unknown,
+  path: string[],
+  conflicts: ConfigMergeConflict[],
+): unknown {
+  if (configValuesEqual(local, base)) return cloneValue(remote);
+  if (configValuesEqual(remote, base)) return cloneValue(local);
+  if (configValuesEqual(local, remote)) return cloneValue(local);
+  if (isPlainRecord(base) || isPlainRecord(local) || isPlainRecord(remote)) {
+    const baseRecord = isPlainRecord(base) ? base : {};
+    const localRecord = isPlainRecord(local) ? local : {};
+    const remoteRecord = isPlainRecord(remote) ? remote : {};
+    const result: Record<string, unknown> = {};
+    const keys = new Set([...Object.keys(baseRecord), ...Object.keys(localRecord), ...Object.keys(remoteRecord)]);
+    for (const key of keys) {
+      const value = mergeConfigNode(baseRecord[key], localRecord[key], remoteRecord[key], [...path, key], conflicts);
+      if (value !== undefined) result[key] = value;
+    }
+    return result;
+  }
+  conflicts.push({
+    path,
+    base: cloneValue(base),
+    local: cloneValue(local),
+    remote: cloneValue(remote),
+  });
+  // Preserve the concurrent remote value until the user resolves this path.
+  return cloneValue(remote);
+}
+
+function configValuesEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => configValuesEqual(value, right[index]));
+  }
+  if (isPlainRecord(left) || isPlainRecord(right)) {
+    if (!isPlainRecord(left) || !isPlainRecord(right)) return false;
+    const leftKeys = Object.keys(left).sort();
+    const rightKeys = Object.keys(right).sort();
+    return leftKeys.length === rightKeys.length
+      && leftKeys.every((key, index) => key === rightKeys[index] && configValuesEqual(left[key], right[key]));
+  }
+  return false;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function cloneValue<T>(value: T): T {
+  if (value === undefined || value === null || typeof value !== 'object') return value;
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function setValueAtPath(root: Record<string, unknown>, path: string[], value: unknown): void {
+  let current = root;
+  for (const key of path.slice(0, -1)) {
+    if (!isPlainRecord(current[key])) current[key] = {};
+    current = current[key] as Record<string, unknown>;
+  }
+  const leaf = path[path.length - 1];
+  if (value === undefined) delete current[leaf];
+  else current[leaf] = cloneValue(value);
 }
