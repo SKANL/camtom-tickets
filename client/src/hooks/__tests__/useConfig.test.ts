@@ -1,10 +1,26 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import type { ConfigResponse } from '@camtom/shared';
 import { useConfig } from '../useConfig';
 
-const mockConfig = {
-  slas: [{ id: 'sla1', label: 'Test SLA', applicablePriorities: [1], maxMinutes: 5, warningThreshold: 0.2 }],
-  dashboard: { pollingInterval: 30000, title: 'Test Dashboard' },
+const mockConfig: ConfigResponse = {
+  slas: [{
+    id: 'sla1',
+    label: 'Test SLA',
+    applicablePriorities: [1],
+    maxMinutes: 5,
+    warningThresholds: { warming: 0.6, heating: 0.3, critical: 0.1 },
+  }],
+  dashboard: {
+    pollingInterval: 30000,
+    title: 'Test Dashboard',
+    teamMembers: [],
+    displayOrder: [1, 2, 3, 4, 0],
+    priorityLabels: {},
+    stateLabels: {},
+    report: { slaWindowHours: 24, enabled: true },
+    kitchenPhrases: { emptyState: '', warningTimer: '', breachedTimer: '' },
+  },
   version: 'abc123def456',
 };
 
@@ -139,5 +155,32 @@ describe('useConfig', () => {
     // Should fall back to cached config (silent — no error surfaced)
     expect(result.current.config).toEqual(mockConfig);
     expect(result.current.error).toBeNull();
+  });
+
+  it('adopts a successful save without shadowing a subsequent authoritative refresh', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true, json: async () => mockConfig,
+    } as Response);
+    const { result } = renderHook(() => useConfig());
+    await waitFor(() => expect(result.current.config?.version).toBe(mockConfig.version));
+
+    const saved = {
+      ...mockConfig,
+      version: 'saved-version',
+      dashboard: { ...mockConfig.dashboard, title: 'Saved' },
+    };
+    act(() => result.current.adoptConfig(saved));
+    expect(result.current.config?.dashboard.title).toBe('Saved');
+    expect(JSON.parse(localStorage.getItem('camtom-config-cache')!).version).toBe('saved-version');
+
+    const remote = {
+      ...saved,
+      version: 'remote-version',
+      dashboard: { ...saved.dashboard, title: 'Remote refresh' },
+    };
+    fetchSpy.mockResolvedValueOnce({ ok: true, json: async () => remote } as Response);
+    await act(async () => { await result.current.refetch(); });
+    expect(result.current.config?.version).toBe('remote-version');
+    expect(result.current.config?.dashboard.title).toBe('Remote refresh');
   });
 });

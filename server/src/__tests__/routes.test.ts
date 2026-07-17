@@ -21,7 +21,9 @@ vi.mock('../supabase', () => ({
   releaseWebhookDelivery: vi.fn(() => Promise.resolve()),
   acquireReconcileLease: vi.fn(() => Promise.resolve(true)),
   releaseReconcileLease: vi.fn(() => Promise.resolve()),
-  getConfiguredReconcileTeamIds: vi.fn(() => Promise.resolve(['team-1'])),
+  getConfiguredReconcileScope: vi.fn(() => Promise.resolve({
+    teamIds: ['team-1'], configUpdatedAt: '2026-07-16T12:00:00.000Z',
+  })),
   getTicketsForTeams: vi.fn(() => Promise.resolve([])),
   getReconcileScopeState: vi.fn(() => Promise.resolve(null)),
   createReconcileRun: vi.fn(() => Promise.resolve('run-1')),
@@ -33,6 +35,9 @@ vi.mock('../supabase', () => ({
   setAppConfig: vi.fn(() => Promise.resolve()),
   getMetadataCache: vi.fn(() => Promise.resolve(null)),
   setMetadataCache: vi.fn(() => Promise.resolve()),
+  getReconciliationHealth: vi.fn(() => Promise.resolve({
+    scheduler: 'supabase-pg-cron', fullApplyEnabled: false, lastFullRun: null, lastAppliedFullSuccessAt: null,
+  })),
 }));
 
 const mockConfig = {
@@ -45,7 +50,10 @@ const mockConfig = {
       warningThresholds: { warming: 0.6, heating: 0.3, critical: 0.1 },
     },
   ],
-  dashboard: { pollingInterval: 30000, title: 'Test Dashboard' },
+  dashboard: {
+    pollingInterval: 30000, title: 'Test Dashboard',
+    teams: [{ id: 'team-1', name: 'Team', filter: 'active-states', timer: true }],
+  },
   version: 'abc123',
 };
 
@@ -57,7 +65,7 @@ vi.mock('../config', () => ({
 }));
 
 const { app } = await import('../index');
-const { saveConfig } = await import('../config');
+const { saveConfig, ensureConfig } = await import('../config');
 const linear = await import('../linear-client');
 const storage = await import('../supabase');
 
@@ -68,11 +76,14 @@ describe('API Routes', () => {
     delete process.env.CRON_SECRET;
     delete process.env.FULL_RECONCILE_APPLY;
     vi.mocked(storage.acquireReconcileLease).mockResolvedValue(true);
-    vi.mocked(storage.getConfiguredReconcileTeamIds).mockResolvedValue(['team-1']);
+    vi.mocked(storage.getConfiguredReconcileScope).mockResolvedValue({
+      teamIds: ['team-1'], configUpdatedAt: '2026-07-16T12:00:00.000Z',
+    });
     vi.mocked(storage.getTicketsForTeams).mockResolvedValue([]);
     vi.mocked(storage.getReconcileScopeState).mockResolvedValue(null);
     vi.mocked(linear.fetchIssuesSince).mockResolvedValue([]);
     vi.mocked(linear.fetchFullIssues).mockResolvedValue({ issues: [], pages: 1, upperBound: '2026-01-01T00:00:00.000Z' });
+    vi.mocked(ensureConfig).mockResolvedValue(mockConfig as any);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -85,6 +96,21 @@ describe('API Routes', () => {
     const res = await request(app).get('/api/health');
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('status', 'ok');
+    expect(res.body.reconciliation).toMatchObject({
+      scheduler: 'supabase-pg-cron', fullApplyEnabled: false,
+    });
+  });
+
+  it('GET /api/health degrades without exposing database errors', async () => {
+    vi.mocked(storage.getReconciliationHealth).mockRejectedValueOnce(new Error('database-secret-details'));
+    const res = await request(app).get('/api/health');
+
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({
+      status: 'degraded',
+      reconciliation: { scheduler: 'supabase-pg-cron', available: false },
+    });
+    expect(JSON.stringify(res.body)).not.toContain('database-secret-details');
   });
 
   it('GET /api/config returns SLAs and version', async () => {
@@ -117,10 +143,10 @@ describe('API Routes', () => {
     const res = await request(app)
       .put('/api/config')
       .set('Authorization', 'Bearer correct-token')
-      .send({ dashboard: { title: 'Nuevo' } });
+      .send({ expectedVersion: 'abc123', dashboard: { title: 'Nuevo' } });
 
     expect(res.status).toBe(200);
-    expect(saveConfig).toHaveBeenCalledWith({ dashboard: { title: 'Nuevo' } });
+    expect(saveConfig).toHaveBeenCalledWith({ dashboard: { title: 'Nuevo' } }, 'abc123');
   });
 
   it('PUT /api/config rejects malformed payloads before persistence', async () => {
@@ -132,6 +158,11 @@ describe('API Routes', () => {
       { dashboard: { priorityLabels: { 1: { label: 'Urgente', color: 'red', extra: true } } } },
       { dashboard: { displayOptions: { timerStyle: 'dial' } } },
       { dashboard: { teams: [{ id: 'team', name: 'Team', filter: 'all', timer: true }] } },
+      { dashboard: { teams: [{ id: ' team ', name: 'Team', filter: 'active-states', timer: true }] } },
+      { dashboard: { teams: [
+        { id: 'team', name: 'One', filter: 'active-states', timer: true },
+        { id: 'team', name: 'Two', filter: 'active-states', timer: true },
+      ] } },
       { slas: 'invalid' },
       {
         slas: [{
@@ -159,6 +190,7 @@ describe('API Routes', () => {
   it('PUT /api/config accepts the complete payload produced by SettingsPanel', async () => {
     process.env.CONFIG_ADMIN_TOKEN = 'correct-token';
     const body = {
+      expectedVersion: 'abc123',
       dashboard: {
         title: 'Nuevo',
         teamMembers: ['Ana'],
@@ -182,7 +214,8 @@ describe('API Routes', () => {
       .send(body);
 
     expect(res.status).toBe(200);
-    expect(saveConfig).toHaveBeenCalledWith(body);
+    const { expectedVersion, ...updates } = body;
+    expect(saveConfig).toHaveBeenCalledWith(updates, expectedVersion);
   });
 
   it('PUT /api/config hides persistence error details from the response', async () => {
@@ -193,7 +226,7 @@ describe('API Routes', () => {
     const res = await request(app)
       .put('/api/config')
       .set('Authorization', 'Bearer correct-token')
-      .send({ dashboard: { title: 'Nuevo' } });
+      .send({ expectedVersion: 'abc123', dashboard: { title: 'Nuevo' } });
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: 'No se pudo guardar la configuración' });
@@ -202,6 +235,21 @@ describe('API Routes', () => {
       '[config] PUT /api/config persistence failed:',
       expect.objectContaining({ message: 'supabase-secret-details' }),
     );
+    errorSpy.mockRestore();
+  });
+
+  it('PUT /api/config returns a useful conflict without exposing storage details', async () => {
+    process.env.CONFIG_ADMIN_TOKEN = 'correct-token';
+    vi.mocked(saveConfig).mockRejectedValueOnce(new Error('setAppConfigV2 failed: app config version conflict'));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const res = await request(app)
+      .put('/api/config')
+      .set('Authorization', 'Bearer correct-token')
+      .send({ expectedVersion: 'abc123', dashboard: { title: 'Nuevo' } });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain('rebasar');
+    expect(res.body.current.version).toBe('abc123');
+    expect(JSON.stringify(res.body)).not.toContain('setAppConfigV2');
     errorSpy.mockRestore();
   });
 
@@ -222,6 +270,28 @@ describe('API Routes', () => {
     expect(storage.acquireReconcileLease).toHaveBeenCalledWith('incremental', expect.any(String), 240);
     expect(storage.setLastSync).not.toHaveBeenCalled();
     expect(linear.fetchIssuesSince).not.toHaveBeenCalled();
+  });
+
+  it('incremental reconcile delegates live scope filtering to the database RPC', async () => {
+    process.env.CRON_SECRET = 'cron-secret';
+    vi.mocked(linear.fetchIssuesSince).mockResolvedValueOnce([{
+      id: 'issue-1', identifier: 'OTHER-1', title: 'Moved', priority: 1, priorityLabel: 'Urgent',
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z',
+      state: { id: 'state', name: 'Open', type: 'started' }, team: { id: 'team-2', name: 'Other' },
+    }]);
+
+    const res = await request(app)
+      .get('/api/cron/reconcile')
+      .set('Authorization', 'Bearer cron-secret');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ processed: 1, archived: 0 });
+    expect(storage.upsertTickets).toHaveBeenCalledOnce();
+    expect(storage.deleteTicket).not.toHaveBeenCalled();
+    expect(storage.setLastSync).toHaveBeenCalled();
+    expect(storage.createReconcileRun).toHaveBeenCalledWith(expect.objectContaining({
+      teamIds: ['team-1'], configUpdatedAt: '2026-07-16T12:00:00.000Z',
+    }));
   });
 
   it('GET /api/cron/reconcile/full is dry-run by default and does not mutate tickets or cursor', async () => {
@@ -254,11 +324,17 @@ describe('API Routes', () => {
     expect(storage.finishReconcileRun).toHaveBeenCalledWith(
       'run-1', expect.objectContaining({ status: 'completed' }), expect.any(AbortSignal),
     );
+    expect(storage.createReconcileRun).toHaveBeenCalledWith(
+      expect.objectContaining({ configUpdatedAt: '2026-07-16T12:00:00.000Z' }),
+      expect.any(AbortSignal),
+    );
   });
 
   it('GET /api/cron/reconcile/full blocks an empty configured scope before fetching or deleting', async () => {
     process.env.CRON_SECRET = 'cron-secret';
-    vi.mocked(storage.getConfiguredReconcileTeamIds).mockResolvedValue([]);
+    vi.mocked(storage.getConfiguredReconcileScope).mockResolvedValueOnce({
+      teamIds: [], configUpdatedAt: '2026-07-16T12:00:00.000Z',
+    });
 
     const res = await request(app)
       .get('/api/cron/reconcile/full')

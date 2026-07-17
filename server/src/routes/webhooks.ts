@@ -131,15 +131,17 @@ router.post('/api/webhooks/linear', async (req: Request, res: Response) => {
     if (payload?.type === 'Issue') {
       const { action, data } = payload;
       const issue = dataToIssue(data);
+      const eventUpdatedAt = typeof data?.updatedAt === 'string' && Number.isFinite(Date.parse(data.updatedAt))
+        ? data.updatedAt
+        : new Date(timestamp).toISOString();
       if (action === 'remove' || action === 'delete' || data?.archivedAt) {
-        const eventUpdatedAt = typeof data?.updatedAt === 'string' && Number.isFinite(Date.parse(data.updatedAt))
-          ? data.updatedAt
-          : new Date(timestamp).toISOString();
         await deleteTicket(issue.id, eventUpdatedAt);
       } else {
+        // The database atomically upserts allowed teams or evicts an existing
+        // out-of-scope row without creating a permanent deletion tombstone.
         await upsertTickets([issueToRow(issue)]);
       }
-      console.log(`[webhook] ${action} ${issue.identifier} written to Supabase`);
+      console.log(`[webhook] ${action} ${issue.identifier} processed`);
     }
     await completeWebhookDelivery(deliveryId, payloadHash, claimToken);
     return res.status(200).json({ ok: true });

@@ -175,6 +175,8 @@ refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
 enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.
+# Keep the repository and local default fail-closed. An approved hosted rollout
+# enables anonymous sign-ins only after migration, env, and deploy readiness.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
 enable_manual_linking = false

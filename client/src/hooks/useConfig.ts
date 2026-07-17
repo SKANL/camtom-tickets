@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ConfigResponse } from '@camtom/shared';
+import { ConfigResponse, validateConfigV2 } from '@camtom/shared';
 
 const CACHE_KEY = 'camtom-config-cache';
 
@@ -11,14 +11,26 @@ interface ConfigCache {
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-export function useConfig() {
+export function useConfig(enabled = true) {
   const initialConfigRef = useRef<ConfigResponse | null | undefined>(undefined);
-  if (initialConfigRef.current === undefined) initialConfigRef.current = configFromCache(loadCache());
+  if (initialConfigRef.current === undefined) initialConfigRef.current = enabled ? configFromCache(loadCache()) : null;
 
   const [config, setConfig] = useState<ConfigResponse | null>(initialConfigRef.current);
   const [loading, setLoading] = useState(initialConfigRef.current === null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const adoptConfig = useCallback((data: ConfigResponse) => {
+    validateConfigResponse(data);
+    saveCache({
+      version: data.version,
+      data: { slas: data.slas, dashboard: data.dashboard, ...(data.configV2 ? { configV2: data.configV2 } : {}) },
+      cachedAt: Date.now(),
+    });
+    setConfig(data);
+    setLoading(false);
+    setError(null);
+  }, []);
 
   const fetchConfig = useCallback(async () => {
     setRefreshing(true);
@@ -26,17 +38,8 @@ export function useConfig() {
       const res = await fetch('/api/config');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: ConfigResponse = await res.json();
-
-      saveCache({
-        version: data.version,
-        data: { slas: data.slas, dashboard: data.dashboard },
-        cachedAt: Date.now(),
-      });
-
-      setConfig(data);
-      setLoading(false);
+      adoptConfig(data);
       setRefreshing(false);
-      setError(null);
       return data;
     } catch (err: any) {
       const fallback = configFromCache(loadCache());
@@ -50,17 +53,28 @@ export function useConfig() {
       setRefreshing(false);
       return null;
     }
-  }, []);
+  }, [adoptConfig]);
 
   useEffect(() => {
+    if (!enabled) return;
     fetchConfig();
 
     // Periodic refresh every 5 minutes
     const interval = setInterval(fetchConfig, CACHE_TTL_MS);
     return () => clearInterval(interval);
-  }, [fetchConfig]);
+  }, [enabled, fetchConfig]);
 
-  return { config, loading, refreshing, error, refetch: fetchConfig };
+  return { config, loading, refreshing, error, refetch: fetchConfig, adoptConfig };
+}
+
+function validateConfigResponse(data: ConfigResponse): void {
+  if (!data?.version || !data.dashboard || !Array.isArray(data.slas)) {
+    throw new Error('Invalid configuration response');
+  }
+  if (data.configV2) {
+    const errors = validateConfigV2(data.configV2, (data.dashboard.teams ?? []).map((team) => team.id));
+    if (errors.length > 0) throw new Error(`Invalid configuration: ${errors.join('; ')}`);
+  }
 }
 
 function loadCache(): ConfigCache | null {

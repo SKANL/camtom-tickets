@@ -1,14 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
+import { createConfigV2 } from '@camtom/shared';
+
+const storage = vi.hoisted(() => ({
+  getAppConfigSnapshot: vi.fn(() => Promise.resolve(null)),
+  setAppConfig: vi.fn(() => Promise.resolve('2026-07-16T12:00:00.000Z')),
+  setAppConfigV2: vi.fn(() => Promise.resolve('2026-07-16T12:00:00.000Z')),
+}));
+vi.mock('../supabase', () => storage);
 
 // Mock fs before importing config
 vi.mock('fs');
 
+import * as configModule from '../config';
+
 describe('Config loading', () => {
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
+    vi.useRealTimers();
+    configModule.resetConfigStateForTests();
+    storage.getAppConfigSnapshot.mockResolvedValue(null);
   });
 
   it('loads SLA config successfully', async () => {
@@ -31,8 +43,7 @@ title: "Test Dashboard"
       return '';
     });
 
-    const { loadConfig } = await import('../config');
-    const config = loadConfig();
+    const config = configModule.loadConfig();
 
     expect(config.slas).toHaveLength(1);
     expect(config.slas[0].id).toBe('test_sla');
@@ -48,8 +59,7 @@ title: "Test Dashboard"
       throw new Error('File not found');
     });
 
-    const { loadConfig } = await import('../config');
-    const config = loadConfig();
+    const config = configModule.loadConfig();
 
     // Should fall back to defaults (single ticket timer)
     expect(config.slas).toHaveLength(1);
@@ -71,20 +81,110 @@ title: "Test Dashboard"
       return '';
     });
 
-    const { loadConfig } = await import('../config');
-
-    // Reset module to clear cached config
-    vi.resetModules();
-    const mod1 = await import('../config');
-    const config1 = mod1.loadConfig();
-
-    vi.resetModules();
-    const mod2 = await import('../config');
-    const config2 = mod2.loadConfig();
+    const config1 = configModule.loadConfig();
+    const config2 = configModule.loadConfig();
 
     // Different slaIndex -> different content -> different version
     // Since we can't control the indexed call pattern easily, just test that version is non-empty
     expect(config1.version).toBeDefined();
     expect(config2.version).toBeDefined();
+  });
+
+  it('refreshes DB-backed config after the warm-instance TTL', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-16T12:00:00.000Z'));
+    vi.mocked(fs.readFileSync).mockImplementation((filePath: string) => (
+      filePath.toString().includes('sla.yaml')
+        ? 'slas:\n  - id: fallback\n    label: Fallback\n    applicablePriorities: [1]\n    maxMinutes: 5\n'
+        : 'pollingInterval: 30000\ntitle: Fallback\n'
+    ));
+    storage.getAppConfigSnapshot
+      .mockResolvedValueOnce({
+        dashboard: { pollingInterval: 30000, title: 'DB v1', teams: [] }, sla: [],
+        updatedAt: '2026-07-16T11:59:00.000Z',
+        teamConfigs: null,
+      })
+      .mockResolvedValueOnce({
+        dashboard: { pollingInterval: 30000, title: 'DB v2', teams: [] }, sla: [],
+        updatedAt: '2026-07-16T12:00:30.000Z',
+        teamConfigs: null,
+      });
+
+    expect((await configModule.ensureConfig()).dashboard.title).toBe('DB v1');
+    expect((await configModule.ensureConfig()).dashboard.title).toBe('DB v1');
+    expect(storage.getAppConfigSnapshot).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(30_001);
+    expect((await configModule.ensureConfig()).dashboard.title).toBe('DB v2');
+    expect(storage.getAppConfigSnapshot).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it('writes config with the authoritative DB version', async () => {
+    vi.mocked(fs.readFileSync).mockImplementation((filePath: string) => (
+      filePath.toString().includes('sla.yaml')
+        ? 'slas:\n  - id: fallback\n    label: Fallback\n    applicablePriorities: [1]\n    maxMinutes: 5\n'
+        : 'pollingInterval: 30000\ntitle: Fallback\n'
+    ));
+    storage.getAppConfigSnapshot.mockResolvedValueOnce({
+      dashboard: { pollingInterval: 30000, title: 'Current', teams: [] },
+      sla: [],
+      updatedAt: '2026-07-16T12:00:00.000Z',
+      teamConfigs: null,
+    });
+    storage.setAppConfig.mockResolvedValueOnce('2026-07-16T12:01:00.000Z');
+
+    const saved = await configModule.saveConfig({ dashboard: { title: 'Next' } }, '2026-07-16T12:00:00.000Z');
+
+    expect(saved.dashboard.title).toBe('Next');
+    expect(storage.setAppConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Next' }),
+      [],
+      '2026-07-16T12:00:00.000Z',
+    );
+  });
+
+  it('dual-reads team config v2 and writes it with the same optimistic version', async () => {
+    vi.mocked(fs.readFileSync).mockImplementation(() => { throw new Error('File not found'); });
+    const base = configModule.loadConfig();
+    const v2 = createConfigV2(base);
+    storage.getAppConfigSnapshot.mockResolvedValue({
+      dashboard: base.dashboard,
+      sla: base.slas,
+      updatedAt: '2026-07-16T12:00:00.000Z',
+      teamConfigs: v2.teams,
+    });
+    storage.setAppConfigV2.mockResolvedValue('2026-07-16T12:01:00.000Z');
+
+    const hydrated = await configModule.ensureConfig(undefined, true);
+    expect(hydrated.configV2?.schemaVersion).toBe(2);
+
+    const next = structuredClone(hydrated.configV2!);
+    next.teams[Object.keys(next.teams)[0]].timer = false;
+    await configModule.saveConfig({ configV2: next }, hydrated.version);
+    expect(storage.setAppConfigV2).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(Array),
+      next.teams,
+      '2026-07-16T12:00:00.000Z',
+    );
+  });
+
+  it('rejects a stale observed response version before writing', async () => {
+    vi.mocked(fs.readFileSync).mockImplementation(() => { throw new Error('File not found'); });
+    const base = configModule.loadConfig();
+    storage.getAppConfigSnapshot.mockResolvedValue({
+      dashboard: base.dashboard,
+      sla: base.slas,
+      updatedAt: '2026-07-16T12:02:00.000Z',
+      teamConfigs: null,
+    });
+
+    await expect(configModule.saveConfig(
+      { dashboard: { title: 'Stale write' } },
+      '2026-07-16T12:01:00.000Z',
+    )).rejects.toThrow('app config version conflict');
+    expect(storage.setAppConfig).not.toHaveBeenCalled();
+    expect(storage.setAppConfigV2).not.toHaveBeenCalled();
   });
 });

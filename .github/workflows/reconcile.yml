@@ -1,14 +1,20 @@
-name: Reconcile tickets
+name: Emergency reconcile
 
-# Safety net for missed Linear webhooks. The webhook is the primary, instant path;
-# this pulls anything the webhook missed. Every 5 minutes (GitHub's minimum).
+# Manual break-glass operation only. Supabase pg_cron is the sole scheduler.
 on:
-  schedule:
-    - cron: '*/5 * * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type RECONCILE to run the incremental endpoint once'
+        required: true
+        type: string
+
+# The workflow only performs an outbound request and never reads repository data.
+permissions: {}
 
 jobs:
   reconcile:
+    if: ${{ inputs.confirm == 'RECONCILE' }}
     runs-on: ubuntu-latest
     steps:
       - name: Ping reconcile endpoint

@@ -1,24 +1,10 @@
-import { Router, Request, Response, NextFunction } from 'express';
-import { createHash, timingSafeEqual } from 'crypto';
+import { Router, Request, Response } from 'express';
 import { ensureConfig, saveConfig } from '../config';
 import { metadataCache } from '../cache';
-import { DashboardConfig, SLAConfig } from '@camtom/shared';
+import { ConfigV2, DashboardConfig, SLAConfig, validateConfigV2 } from '@camtom/shared';
+import { authorizeAdmin } from '../admin-auth';
 
 const router: Router = Router();
-
-function authorizeConfigWrite(req: Request, res: Response, next: NextFunction) {
-  const expected = process.env.CONFIG_ADMIN_TOKEN;
-  if (!expected) return res.status(503).json({ error: 'La configuración administrativa no está disponible' });
-
-  const header = req.headers.authorization;
-  const providedValue = header?.startsWith('Bearer ') ? header.slice(7) : '';
-  const provided = createHash('sha256').update(providedValue, 'utf8').digest();
-  const secret = createHash('sha256').update(expected, 'utf8').digest();
-  if (!timingSafeEqual(provided, secret)) {
-    return res.status(401).json({ error: 'Clave de administración inválida' });
-  }
-  next();
-}
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -77,9 +63,12 @@ function isStateLabels(value: unknown): boolean {
 
 function isTeams(value: unknown): boolean {
   if (!Array.isArray(value)) return false;
+  const ids = new Set<string>();
   return value.every((team) => {
     if (!isRecord(team) || !hasOnlyKeys(team, ['id', 'name', 'filter', 'timer', 'accent'])) return false;
-    if (typeof team.id !== 'string' || typeof team.name !== 'string' || typeof team.timer !== 'boolean') return false;
+    if (typeof team.id !== 'string' || !team.id || team.id !== team.id.trim() || ids.has(team.id)
+      || typeof team.name !== 'string' || typeof team.timer !== 'boolean') return false;
+    ids.add(team.id);
     if (team.filter !== 'ticket-label' && team.filter !== 'active-states') return false;
     return team.accent === undefined || (typeof team.accent === 'string' && /^#[0-9a-f]{6}$/i.test(team.accent));
   });
@@ -137,13 +126,21 @@ function isSlas(value: unknown): boolean {
   });
 }
 
-function validateConfigUpdate(value: unknown): string | null {
+export function validateConfigUpdate(value: unknown): string | null {
   if (!isRecord(value)) return 'El cuerpo debe ser un objeto';
   const body = value;
-  if (!hasOnlyKeys(body, ['dashboard', 'slas'])) return 'El cuerpo contiene campos desconocidos';
-  if (body.dashboard === undefined && body.slas === undefined) return 'Incluí dashboard o slas';
+  if (!hasOnlyKeys(body, ['dashboard', 'slas', 'configV2', 'expectedVersion'])) return 'El cuerpo contiene campos desconocidos';
+  if (typeof body.expectedVersion !== 'string' || !body.expectedVersion.trim()) return 'expectedVersion es obligatorio';
+  if (body.dashboard === undefined && body.slas === undefined && body.configV2 === undefined) return 'Incluí dashboard, slas o configV2';
   if (body.dashboard !== undefined && !isDashboardUpdate(body.dashboard)) return 'dashboard tiene un formato inválido';
   if (body.slas !== undefined && !isSlas(body.slas)) return 'slas tiene un formato inválido';
+  if (body.configV2 !== undefined) {
+    const teamIds = isRecord(body.dashboard) && Array.isArray(body.dashboard.teams)
+      ? body.dashboard.teams.filter(isRecord).map((team) => team.id).filter((id): id is string => typeof id === 'string')
+      : undefined;
+    const errors = validateConfigV2(body.configV2, teamIds);
+    if (errors.length > 0) return errors.join('; ');
+  }
   return null;
 }
 
@@ -151,20 +148,33 @@ router.get('/api/config', async (_req: Request, res: Response) => {
   res.json(await ensureConfig());
 });
 
-router.put('/api/config', authorizeConfigWrite, async (req: Request, res: Response) => {
+router.put('/api/config', authorizeAdmin, async (req: Request, res: Response) => {
   try {
     const validationError = validateConfigUpdate(req.body);
     if (validationError) return res.status(400).json({ error: validationError });
     const body = req.body as {
       dashboard?: Partial<DashboardConfig>;
       slas?: SLAConfig[];
+      configV2?: ConfigV2;
+      expectedVersion: string;
     };
     // Invalidate metadata cache so next request picks up fresh data
     metadataCache.delete('catalog');
-    const updated = await saveConfig(body);
+    const { expectedVersion, ...updates } = body;
+    const updated = await saveConfig(updates, expectedVersion);
     res.json(updated);
   } catch (err: unknown) {
     console.error('[config] PUT /api/config persistence failed:', err);
+    if (err instanceof Error && err.message.includes('app config version conflict')) {
+      const current = await ensureConfig(undefined, true);
+      return res.status(409).json({
+        error: 'La configuración cambió en otro navegador. Elegí cargar la última versión o rebasar tu borrador.',
+        current,
+      });
+    }
+    if (err instanceof Error && err.message.startsWith('Invalid config v2:')) {
+      return res.status(400).json({ error: err.message.replace('Invalid config v2: ', '') });
+    }
     res.status(500).json({ error: 'No se pudo guardar la configuración' });
   }
 });

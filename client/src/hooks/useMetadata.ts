@@ -25,7 +25,7 @@ const emptyCatalog: MetadataCatalog = {
   cycles: [],
 };
 
-export function useMetadata(): MetadataState & { refetch: () => void } {
+export function useMetadata(enabled = true): MetadataState & { refetch: () => void } {
   const [state, setState] = useState<MetadataState>({
     catalog: null,
     loading: true,
@@ -73,6 +73,10 @@ export function useMetadata(): MetadataState & { refetch: () => void } {
   };
 
   useEffect(() => {
+    if (!enabled) {
+      setState({ catalog: emptyCatalog, loading: false, error: null });
+      return;
+    }
     const id = ++fetchRef.current;
     fetchMetadata(id);
 
@@ -86,7 +90,7 @@ export function useMetadata(): MetadataState & { refetch: () => void } {
       clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [enabled]);
 
   const refetch = () => {
     const id = ++fetchRef.current;

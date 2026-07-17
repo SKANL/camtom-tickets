@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Issue, TicketRow } from '@camtom/shared';
-import { supabase } from '../lib/supabase';
+import { screenSupabase, supabase } from '../lib/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   applyTicketChange,
   createTicketStoreFromIssues,
@@ -23,10 +24,37 @@ interface IssuesState {
 
 const CACHE_KEY = 'camtom-tickets:issues';
 const RESYNC_RETRY_MS = 5000;
+const SNAPSHOT_PAGE_SIZE = 1000;
+const MAX_SNAPSHOT_ROWS = 100_000;
 
-function loadCache(): Issue[] {
+export async function fetchTicketSnapshot(client: SupabaseClient = supabase): Promise<TicketRow[]> {
+  const rows: TicketRow[] = [];
+  let afterId = '';
+
+  while (rows.length < MAX_SNAPSHOT_ROWS) {
+    const { data, error } = await client
+      .from('tickets')
+      .select('*')
+      .gt('id', afterId)
+      .order('id', { ascending: true })
+      .limit(SNAPSHOT_PAGE_SIZE);
+    if (error) throw new Error(error.message);
+
+    const page = (data as TicketRow[] | null) ?? [];
+    rows.push(...page);
+    if (page.length < SNAPSHOT_PAGE_SIZE) return rows;
+
+    const nextId = page[page.length - 1]?.id;
+    if (!nextId || nextId <= afterId) throw new Error('Ticket snapshot cursor did not advance');
+    afterId = nextId;
+  }
+
+  throw new Error(`Ticket snapshot exceeds the safety limit (${MAX_SNAPSHOT_ROWS})`);
+}
+
+function loadCache(cacheKey = CACHE_KEY): Issue[] {
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
+    const raw = localStorage.getItem(cacheKey);
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -34,9 +62,9 @@ function loadCache(): Issue[] {
   }
 }
 
-function saveCache(issues: Issue[]): void {
+function saveCache(issues: Issue[], cacheKey = CACHE_KEY): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(issues));
+    localStorage.setItem(cacheKey, JSON.stringify(issues));
   } catch {
     // localStorage full/unavailable — ignore
   }
@@ -44,12 +72,14 @@ function saveCache(issues: Issue[]): void {
 
 /**
  * Live tickets, sourced from Supabase:
- *   1. one SELECT for the initial snapshot (fast paint, seeded from localStorage cache)
+ *   1. a stable, paginated SELECT snapshot (fast paint is seeded from localStorage cache)
  *   2. a Realtime subscription that pushes every INSERT/UPDATE/DELETE
  */
-export function useIssues(): IssuesState {
+export function useIssues(cacheScope = 'legacy'): IssuesState {
+  const cacheKey = cacheScope === 'legacy' ? CACHE_KEY : `${CACHE_KEY}:${cacheScope}`;
+  const dataClient = cacheScope === 'legacy' ? supabase : screenSupabase;
   const initialRef = useRef<TicketStore | null>(null);
-  if (!initialRef.current) initialRef.current = createTicketStoreFromIssues(loadCache());
+  if (!initialRef.current) initialRef.current = createTicketStoreFromIssues(loadCache(cacheKey));
   const storeRef = useRef<TicketStore>(initialRef.current);
   const [state, setState] = useState<IssuesState>(() => ({
     issues: issuesFromStore(storeRef.current),
@@ -62,8 +92,8 @@ export function useIssues(): IssuesState {
   const commit = useCallback((updates: Partial<IssuesState> = {}) => {
     const issues = issuesFromStore(storeRef.current);
     setState((prev) => ({ ...prev, issues, loading: false, error: null, lastUpdated: Date.now(), ...updates }));
-    saveCache(issues);
-  }, []);
+    saveCache(issues, cacheKey);
+  }, [cacheKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,18 +109,20 @@ export function useIssues(): IssuesState {
 
     const hydrate = async (): Promise<boolean> => {
       hydrating = true;
-      const { data, error } = await supabase.from('tickets').select('*');
-      if (cancelled) return false;
-
-      if (error) {
+      let data: TicketRow[];
+      try {
+        data = await fetchTicketSnapshot(dataClient);
+      } catch (error) {
+        if (cancelled) return false;
         for (const change of buffered) applyTicketChange(storeRef.current, change);
         buffered.length = 0;
         hydrating = false;
-        commit({ error: error.message });
+        commit({ error: error instanceof Error ? error.message : 'Ticket snapshot failed' });
         return false;
       }
+      if (cancelled) return false;
 
-      storeRef.current = mergeSnapshot((data as TicketRow[]) ?? [], buffered);
+      storeRef.current = mergeSnapshot(data, buffered);
       buffered.length = 0;
       hydrating = false;
       commit();
@@ -125,8 +157,8 @@ export function useIssues(): IssuesState {
       });
     };
 
-    const channel = supabase
-      .channel('tickets-changes')
+    const channel = dataClient
+      .channel(`tickets-changes:${cacheScope}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'tickets' },
@@ -166,9 +198,9 @@ export function useIssues(): IssuesState {
       cancelled = true;
       clearTimeout(fallbackTimer);
       if (retryTimer) clearTimeout(retryTimer);
-      supabase.removeChannel(channel);
+      dataClient.removeChannel(channel);
     };
-  }, [commit]);
+  }, [cacheScope, commit, dataClient]);
 
   return state;
 }

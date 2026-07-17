@@ -2,8 +2,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import * as crypto from 'crypto';
-import { SLAConfig, DashboardConfig, ConfigResponse } from '@camtom/shared';
-import { getAppConfig, setAppConfig } from './supabase';
+import {
+  SLAConfig,
+  DashboardConfig,
+  ConfigResponse,
+  ConfigV2,
+  TeamDashboardSettings,
+  createConfigV2,
+  validateConfigV2,
+} from '@camtom/shared';
+import { getAppConfigSnapshot, setAppConfig, setAppConfigV2 } from './supabase';
 
 function getConfigDir(): string {
   // Allow override via env var (useful for Vercel / custom deployments)
@@ -64,7 +72,19 @@ interface RawDashboardFile {
 }
 
 let cachedConfig: ConfigResponse | null = null;
-let hydrated = false;
+let cachedConfigUpdatedAt: string | null = null;
+let lastHydratedAt = 0;
+let hydrationPromise: Promise<ConfigResponse> | null = null;
+const CONFIG_CACHE_TTL_MS = 30_000;
+
+/** Reset module state without forcing Vitest to rebuild the entire import graph. */
+export function resetConfigStateForTests(): void {
+  if (process.env.NODE_ENV !== 'test') throw new Error('config test reset is test-only');
+  cachedConfig = null;
+  cachedConfigUpdatedAt = null;
+  lastHydratedAt = 0;
+  hydrationPromise = null;
+}
 
 function computeVersion(...contents: string[]): string {
   const hash = crypto.createHash('sha256');
@@ -138,6 +158,7 @@ export function loadConfig(): ConfigResponse {
   const version = computeVersion(slaContent, dashContent);
 
   cachedConfig = { slas, dashboard, version };
+  cachedConfigUpdatedAt = null;
   return cachedConfig;
 }
 
@@ -197,36 +218,58 @@ function getDefaultDashboardConfig(): DashboardConfig {
 
 /**
  * Async accessor: ensures the YAML base is loaded, then overlays any
- * Supabase-stored config on top (once per process). Falls back to YAML on DB error.
+ * Supabase-stored config on top. Warm instances refresh on a short TTL and retain
+ * the last known value on transient DB errors.
  */
-export async function ensureConfig(): Promise<ConfigResponse> {
+export async function ensureConfig(signal?: AbortSignal, forceRefresh = false): Promise<ConfigResponse> {
   if (!cachedConfig) {
     loadConfig();
   }
-  if (!hydrated) {
+  if (!forceRefresh && Date.now() - lastHydratedAt < CONFIG_CACHE_TTL_MS) return cachedConfig!;
+  if (hydrationPromise) return hydrationPromise;
+
+  hydrationPromise = (async () => {
     try {
-      const row = await getAppConfig();
+      const row = await getAppConfigSnapshot(signal);
       if (row) {
-        cachedConfig = {
-          version: computeVersion(JSON.stringify(row.sla), JSON.stringify(row.dashboard)),
+        const base: ConfigResponse = {
+          version: '',
           slas: row.sla,
           dashboard: row.dashboard,
         };
+        const teamConfigs = row.teamConfigs;
+        if (teamConfigs) {
+          const configV2 = createConfigV2(base);
+          configV2.teams = teamConfigs;
+          const errors = validateConfigV2(configV2, (row.dashboard.teams ?? []).map((team: any) => team.id));
+          if (errors.length > 0) throw new Error(`Invalid config v2: ${errors.join('; ')}`);
+          base.configV2 = configV2;
+        }
+        // DB updated_at is the opaque observed version used for optimistic writes.
+        base.version = row.updatedAt;
+        cachedConfig = base;
+        cachedConfigUpdatedAt = row.updatedAt;
       }
     } catch (err: any) {
-      console.warn(`[config] DB hydrate failed, using YAML defaults: ${err.message}`);
+      console.warn(`[config] DB refresh failed, keeping last known config: ${err.message}`);
     } finally {
-      hydrated = true;
+      lastHydratedAt = Date.now();
+      hydrationPromise = null;
     }
-  }
-  return cachedConfig!;
+    return cachedConfig!;
+  })();
+  return hydrationPromise;
 }
 
 export async function saveConfig(updates: {
   dashboard?: Partial<DashboardConfig>;
   slas?: SLAConfig[];
-}): Promise<ConfigResponse> {
-  const current = await ensureConfig();
+  configV2?: ConfigV2;
+}, expectedVersion: string): Promise<ConfigResponse> {
+  const current = await ensureConfig(undefined, true);
+  if (!expectedVersion || current.version !== expectedVersion) {
+    throw new Error('app config version conflict');
+  }
 
   let mergedDashboard: DashboardConfig = current.dashboard;
   if (updates.dashboard) {
@@ -254,17 +297,101 @@ export async function saveConfig(updates: {
   }
 
   const mergedSlas = updates.slas ?? current.slas;
+  let configV2 = updates.configV2 ?? current.configV2;
+
+  if (updates.configV2) {
+    const errors = validateConfigV2(updates.configV2, (mergedDashboard.teams ?? []).map((team) => team.id));
+    if (errors.length > 0) throw new Error(`Invalid config v2: ${errors.join('; ')}`);
+    configV2 = updates.configV2;
+    mergedDashboard = syncLegacyDashboard(mergedDashboard, configV2);
+  } else if (configV2 && (updates.dashboard || updates.slas)) {
+    configV2 = applyLegacyUpdatesToV2(configV2, updates.dashboard, updates.slas);
+  }
 
   // Persist to Supabase (read-only FS on Vercel; let errors propagate to the PUT handler).
-  await setAppConfig(mergedDashboard, mergedSlas);
+  const updatedAt = configV2
+    ? await setAppConfigV2(mergedDashboard, mergedSlas, configV2.teams, cachedConfigUpdatedAt)
+    : await setAppConfig(mergedDashboard, mergedSlas, cachedConfigUpdatedAt);
 
-  current.dashboard = mergedDashboard;
-  current.slas = mergedSlas;
-  current.version = computeVersion(JSON.stringify(mergedSlas), JSON.stringify(mergedDashboard));
-  cachedConfig = current;
-  hydrated = true;
-  console.log(`[config] Config saved: version ${current.version}`);
-  return current;
+  const saved: ConfigResponse = {
+    dashboard: mergedDashboard,
+    slas: mergedSlas,
+    ...(configV2 ? { configV2 } : {}),
+    version: updatedAt,
+  };
+  cachedConfig = saved;
+  cachedConfigUpdatedAt = updatedAt;
+  lastHydratedAt = Date.now();
+  console.log(`[config] Config saved: version ${saved.version}`);
+  return saved;
+}
+
+function syncLegacyDashboard(dashboard: DashboardConfig, configV2: ConfigV2): DashboardConfig {
+  const firstTeamId = dashboard.teams?.[0]?.id;
+  const legacyProjection = firstTeamId ? configV2.teams[firstTeamId] : undefined;
+  if (!legacyProjection) throw new Error('Invalid config v2: missing legacy projection team');
+  return {
+    ...dashboard,
+    title: configV2.global.title,
+    pollingInterval: configV2.global.pollingInterval,
+    teamMembers: legacyProjection.teamMembers,
+    displayOrder: legacyProjection.displayOrder,
+    priorityLabels: legacyProjection.priorityLabels,
+    stateLabels: legacyProjection.stateLabels,
+    report: legacyProjection.report,
+    kitchenPhrases: legacyProjection.kitchenPhrases,
+    zoneLabels: legacyProjection.zoneLabels,
+    displayOptions: legacyProjection.displayOptions,
+    teams: (dashboard.teams ?? []).map((team) => {
+      const settings = configV2.teams[team.id];
+      if (!settings) return team;
+      return {
+        ...team,
+        filter: settings.filter,
+        timer: settings.timer,
+        ...(settings.accent ? { accent: settings.accent } : {}),
+      };
+    }),
+  };
+}
+
+function applyLegacyUpdatesToV2(
+  current: ConfigV2,
+  dashboard?: Partial<DashboardConfig>,
+  slas?: SLAConfig[],
+): ConfigV2 {
+  const teamPatch: Partial<TeamDashboardSettings> = {};
+  if (slas) teamPatch.slas = slas;
+  const keys: (keyof TeamDashboardSettings)[] = [
+    'teamMembers', 'displayOrder', 'priorityLabels', 'stateLabels', 'report',
+    'kitchenPhrases', 'zoneLabels', 'displayOptions',
+  ];
+  for (const key of keys) {
+    const value = dashboard?.[key as keyof DashboardConfig];
+    if (value !== undefined) (teamPatch as any)[key] = value;
+  }
+  const nextTeams = Object.fromEntries(
+    Object.entries(current.teams).map(([id, settings]) => {
+      const legacyTeam = dashboard?.teams?.find((team) => team.id === id);
+      return [id, {
+        ...settings,
+        ...teamPatch,
+        ...(legacyTeam ? {
+          filter: legacyTeam.filter,
+          timer: legacyTeam.timer,
+          ...(legacyTeam.accent ? { accent: legacyTeam.accent } : {}),
+        } : {}),
+      }];
+    }),
+  );
+  return {
+    ...current,
+    global: {
+      title: dashboard?.title ?? current.global.title,
+      pollingInterval: dashboard?.pollingInterval ?? current.global.pollingInterval,
+    },
+    teams: nextTeams,
+  };
 }
 
 export function getConfig(): ConfigResponse {

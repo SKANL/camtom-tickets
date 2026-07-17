@@ -16,7 +16,10 @@ describe('config admin client', () => {
 
   it('keeps the token only in sessionStorage and sends the bearer header', async () => {
     storeAdminToken('secret');
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ version: 'v2', dashboard: {}, slas: [] }),
+    } as Response);
 
     await updateServerConfig({ dashboard: { title: 'Nuevo' } }, readAdminToken());
 

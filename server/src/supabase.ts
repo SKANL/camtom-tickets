@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { TicketRow } from '@camtom/shared';
+import { configuredTeamIds } from './team-scope';
 
 let admin: SupabaseClient | null = null;
 
@@ -97,6 +98,7 @@ export async function releaseReconcileLease(name: string, owner: string, signal?
 export interface ScopedTicket {
   id: string;
   team: { id?: string } | null;
+  team_id?: string | null;
   synced_at: string;
 }
 
@@ -105,21 +107,27 @@ export interface ReconcileScopeState {
   successful_snapshots: number;
 }
 
-export async function getConfiguredReconcileTeamIds(signal?: AbortSignal): Promise<string[]> {
+export interface ConfiguredReconcileScope {
+  teamIds: string[];
+  configUpdatedAt: string;
+}
+
+/** Always reads the authoritative DB row; never use the warm config cache for destructive scope. */
+export async function getConfiguredReconcileScope(signal?: AbortSignal): Promise<ConfiguredReconcileScope | null> {
   const config = await getAppConfig(signal);
-  const teams = config?.dashboard?.teams;
-  if (!Array.isArray(teams)) return [];
-  return Array.from(new Set(teams
-    .map((team: unknown) => (team && typeof team === 'object' ? (team as { id?: unknown }).id : null))
-    .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0))).sort();
+  if (!config) return null;
+  return {
+    teamIds: configuredTeamIds({ dashboard: config.dashboard, slas: [], version: '' }),
+    configUpdatedAt: config.updatedAt,
+  };
 }
 
 export async function getTicketsForTeams(teamIds: string[], signal?: AbortSignal): Promise<ScopedTicket[]> {
   if (teamIds.length === 0) return [];
   const request = getSupabaseAdmin()
     .from('tickets')
-    .select('id, team, synced_at')
-    .in('team->>id', teamIds);
+    .select('id, team, team_id, synced_at')
+    .in('team_id', teamIds);
   if (signal) request.abortSignal(signal);
   const { data, error } = await request;
   if (error) throw new Error(`getTicketsForTeams failed: ${error.message}`);
@@ -144,6 +152,7 @@ export async function createReconcileRun(input: {
   startedAt: string;
   upperBound: string;
   dryRun: boolean;
+  configUpdatedAt?: string;
 }, signal?: AbortSignal): Promise<string> {
   const request = getSupabaseAdmin()
     .from('reconcile_runs')
@@ -154,6 +163,7 @@ export async function createReconcileRun(input: {
       started_at: input.startedAt,
       upper_bound: input.upperBound,
       dry_run: input.dryRun,
+      config_updated_at: input.configUpdatedAt ?? null,
     })
     .select('id');
   if (signal) request.abortSignal(signal);
@@ -237,23 +247,70 @@ export async function setLastSync(iso: string): Promise<void> {
   if (error) throw new Error(`setLastSync failed: ${error.message}`);
 }
 
-export async function getAppConfig(signal?: AbortSignal): Promise<{ dashboard: any; sla: any } | null> {
+export async function getAppConfig(signal?: AbortSignal): Promise<{ dashboard: any; sla: any; updatedAt: string } | null> {
   const request = getSupabaseAdmin()
     .from('app_config')
-    .select('dashboard, sla')
+    .select('dashboard, sla, updated_at')
     .eq('id', 1);
   if (signal) request.abortSignal(signal);
   const { data, error } = await request.maybeSingle();
   if (error) throw new Error(`getAppConfig failed: ${error.message}`);
   if (!data) return null;
-  return { dashboard: data.dashboard, sla: data.sla };
+  return { dashboard: data.dashboard, sla: data.sla, updatedAt: data.updated_at };
 }
 
-export async function setAppConfig(dashboard: any, sla: any): Promise<void> {
-  const { error } = await getSupabaseAdmin()
-    .from('app_config')
-    .upsert({ id: 1, dashboard, sla, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+export interface AppConfigSnapshot {
+  dashboard: any;
+  sla: any;
+  updatedAt: string;
+  teamConfigs: Record<string, any> | null;
+}
+
+/** Reads app_config and normalized team settings from one PostgreSQL statement snapshot. */
+export async function getAppConfigSnapshot(signal?: AbortSignal): Promise<AppConfigSnapshot | null> {
+  const request = getSupabaseAdmin().rpc('get_app_config_v2_snapshot');
+  if (signal) request.abortSignal(signal);
+  const { data, error } = await request;
+  // Expand/deploy compatibility: before 0011 exists, return a coherent v1 snapshot.
+  if (error?.code === '42883' || error?.code === 'PGRST202') {
+    const legacy = await getAppConfig(signal);
+    return legacy ? { ...legacy, teamConfigs: null } : null;
+  }
+  if (error) throw new Error(`getAppConfigSnapshot failed: ${error.message}`);
+  if (!data) return null;
+  return data as AppConfigSnapshot;
+}
+
+export async function setAppConfig(
+  dashboard: any,
+  sla: any,
+  expectedUpdatedAt: string | null,
+): Promise<string> {
+  const { data, error } = await getSupabaseAdmin().rpc('set_app_config_if_version', {
+    p_dashboard: dashboard,
+    p_sla: sla,
+    p_expected_updated_at: expectedUpdatedAt,
+  });
   if (error) throw new Error(`setAppConfig failed: ${error.message}`);
+  if (typeof data !== 'string') throw new Error('setAppConfig failed: missing updated_at');
+  return data;
+}
+
+export async function setAppConfigV2(
+  dashboard: any,
+  sla: any,
+  teamConfigs: Record<string, any>,
+  expectedUpdatedAt: string | null,
+): Promise<string> {
+  const { data, error } = await getSupabaseAdmin().rpc('set_app_config_v2_if_version', {
+    p_dashboard: dashboard,
+    p_sla: sla,
+    p_team_configs: teamConfigs,
+    p_expected_updated_at: expectedUpdatedAt,
+  });
+  if (error) throw new Error(`setAppConfigV2 failed: ${error.message}`);
+  if (typeof data !== 'string') throw new Error('setAppConfigV2 failed: missing updated_at');
+  return data;
 }
 
 export async function getMetadataCache(): Promise<{ catalog: any; updatedAt: string } | null> {
@@ -272,4 +329,44 @@ export async function setMetadataCache(catalog: any): Promise<void> {
     .from('metadata_cache')
     .upsert({ id: 1, catalog, updated_at: new Date().toISOString() }, { onConflict: 'id' });
   if (error) throw new Error(`setMetadataCache failed: ${error.message}`);
+}
+
+export interface ReconciliationHealth {
+  scheduler: 'supabase-pg-cron';
+  fullApplyEnabled: boolean;
+  lastFullRun: { status: string; finishedAt: string | null; dryRun: boolean } | null;
+  lastAppliedFullSuccessAt: string | null;
+}
+
+/** Non-sensitive operational state safe to expose from /api/health. */
+export async function getReconciliationHealth(): Promise<ReconciliationHealth> {
+  const client = getSupabaseAdmin();
+  const [latest, applied] = await Promise.all([
+    client.from('reconcile_runs')
+      .select('status, finished_at, dry_run')
+      .eq('kind', 'full')
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    client.from('reconcile_runs')
+      .select('finished_at')
+      .eq('kind', 'full')
+      .eq('status', 'completed')
+      .eq('dry_run', false)
+      .order('finished_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  if (latest.error) throw new Error(`getReconciliationHealth latest failed: ${latest.error.message}`);
+  if (applied.error) throw new Error(`getReconciliationHealth applied failed: ${applied.error.message}`);
+  return {
+    scheduler: 'supabase-pg-cron',
+    fullApplyEnabled: process.env.FULL_RECONCILE_APPLY === 'true',
+    lastFullRun: latest.data ? {
+      status: latest.data.status,
+      finishedAt: latest.data.finished_at,
+      dryRun: latest.data.dry_run,
+    } : null,
+    lastAppliedFullSuccessAt: applied.data?.finished_at ?? null,
+  };
 }

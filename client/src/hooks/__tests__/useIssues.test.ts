@@ -9,7 +9,10 @@ const mock = vi.hoisted(() => {
     changeCallback?: (payload: unknown) => void;
   } = { selectResolvers: [] };
   const channel: Record<string, unknown> = {};
-  const select = vi.fn(() => new Promise((resolve) => state.selectResolvers.push(resolve)));
+  const limit = vi.fn(() => new Promise((resolve) => state.selectResolvers.push(resolve)));
+  const order = vi.fn(() => ({ limit }));
+  const gt = vi.fn(() => ({ order }));
+  const select = vi.fn(() => ({ gt }));
   const on = vi.fn((_type: string, _filter: unknown, callback: (payload: unknown) => void) => {
     state.changeCallback = callback;
     return channel;
@@ -19,22 +22,23 @@ const mock = vi.hoisted(() => {
     return channel;
   });
   Object.assign(channel, { on, subscribe });
-  return { state, channel, select, on, subscribe, removeChannel: vi.fn() };
+  return { state, channel, select, gt, order, limit, on, subscribe, removeChannel: vi.fn() };
 });
 
-vi.mock('../../lib/supabase', () => ({
-  supabase: {
+vi.mock('../../lib/supabase', () => {
+  const client = {
     from: vi.fn(() => ({ select: mock.select })),
     channel: vi.fn(() => mock.channel),
     removeChannel: mock.removeChannel,
-  },
-}));
+  };
+  return { supabase: client, screenSupabase: client };
+});
 
 import { useIssues } from '../useIssues';
 
-function row(title: string, updatedAt = '2026-07-15T10:00:00.000Z'): TicketRow {
+function row(title: string, updatedAt = '2026-07-15T10:00:00.000Z', id = 'CAM-1'): TicketRow {
   return {
-    id: 'CAM-1', identifier: 'CAM-1', title, description: null, priority: 1,
+    id, identifier: id, title, description: null, priority: 1,
     priority_label: 'Urgente', created_at: '2026-07-15T09:00:00.000Z', updated_at: updatedAt,
     completed_at: null, assigned_at: null, due_date: null, assignee: null,
     state: { id: 'new', name: 'Nuevo', type: 'unstarted' }, labels: null,
@@ -56,6 +60,9 @@ describe('useIssues resync', () => {
     mock.state.subscribeCallback = undefined;
     mock.state.changeCallback = undefined;
     mock.select.mockClear();
+    mock.gt.mockClear();
+    mock.order.mockClear();
+    mock.limit.mockClear();
     mock.removeChannel.mockClear();
   });
 
@@ -100,5 +107,38 @@ describe('useIssues resync', () => {
 
     expect(mock.removeChannel).toHaveBeenCalledWith(mock.channel);
     await resolveSelect({ data: [row('Ignorado')], error: null });
+  });
+
+  it('keyset-pages while replaying an insert, delete, and update between pages', async () => {
+    const { result } = renderHook(() => useIssues());
+    act(() => mock.state.subscribeCallback?.('SUBSCRIBED'));
+    const firstPage = Array.from({ length: 1000 }, (_, index) => ({
+      ...row(`Ticket ${index}`), id: `CAM-${String(index).padStart(4, '0')}`,
+    }));
+    await resolveSelect({ data: firstPage, error: null });
+    await waitFor(() => expect(mock.select).toHaveBeenCalledTimes(2));
+
+    act(() => {
+      mock.state.changeCallback?.({
+        eventType: 'INSERT', new: row('Inserted behind cursor', '2026-07-15T10:02:00.000Z', 'AAA-NEW'), old: {},
+        commit_timestamp: '2026-07-15T10:02:00.000Z',
+      });
+      mock.state.changeCallback?.({
+        eventType: 'DELETE', new: {}, old: firstPage[1], commit_timestamp: '2026-07-15T10:03:00.000Z',
+      });
+      mock.state.changeCallback?.({
+        eventType: 'UPDATE', new: row('Updated during paging', '2026-07-15T10:04:00.000Z', 'CAM-0002'),
+        old: firstPage[2], commit_timestamp: '2026-07-15T10:04:00.000Z',
+      });
+    });
+    await resolveSelect({ data: [row('Last', '2026-07-15T10:00:00.000Z', 'CAM-1000')], error: null });
+
+    await waitFor(() => expect(result.current.issues).toHaveLength(1001));
+    expect(result.current.issues.some((issue) => issue.id === 'AAA-NEW')).toBe(true);
+    expect(result.current.issues.some((issue) => issue.id === 'CAM-0001')).toBe(false);
+    expect(result.current.issues.find((issue) => issue.id === 'CAM-0002')?.title).toBe('Updated during paging');
+    expect(mock.gt).toHaveBeenNthCalledWith(1, 'id', '');
+    expect(mock.gt).toHaveBeenNthCalledWith(2, 'id', 'CAM-0999');
+    expect(mock.limit).toHaveBeenCalledWith(1000);
   });
 });
