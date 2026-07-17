@@ -27,14 +27,18 @@ export function createApp(): Application {
 
   app.use(cors({ origin: corsOrigin, credentials: true }));
 
-  // JSON parser that preserves the raw body for webhook signature verification.
+  // Linear payloads can exceed Express's default 100 KiB limit. Keep the larger
+  // limit route-specific and preserve the exact bytes used for HMAC verification.
   app.use(
+    '/api/webhooks/linear',
     express.json({
+      limit: 1024 * 1024,
       verify: (req: Request, _res: Response, buf: Buffer) => {
         (req as any).rawBody = buf.toString('utf8');
       },
     }),
   );
+  app.use(express.json());
 
   app.get('/api/health', async (_req, res) => {
     try {
@@ -62,9 +66,13 @@ export function createApp(): Application {
 
   // In production the client is served as static files by Vercel; nothing to do here.
 
-  app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  app.use((err: Error & { type?: string }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    if (err.type === 'entity.too.large') {
+      return res.status(413).json({ error: 'Payload too large' });
+    }
+
     console.error('[server] Unhandled error:', err.message);
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Internal server error',
       message: process.env.NODE_ENV === 'development' ? err.message : undefined,
     });
