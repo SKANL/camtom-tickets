@@ -107,9 +107,7 @@ describe('useConfig', () => {
 
     const { result } = renderHook(() => useConfig());
 
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(result.current.config?.version).toBe('abc123def456');
+    await waitFor(() => expect(result.current.config?.version).toBe('abc123def456'));
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
