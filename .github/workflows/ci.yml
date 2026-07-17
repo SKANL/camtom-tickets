@@ -26,7 +26,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
-      - run: pnpm -r typecheck
       - run: pnpm build
+      - run: pnpm -r typecheck
       - name: Generated files are committed
         run: git diff --exit-code
