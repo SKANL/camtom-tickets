@@ -109,4 +109,77 @@ describe('settings authoritative conflict lifecycle', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar configuración' }));
     expect(screen.getByTestId('active-config')).toHaveTextContent('Local title');
   });
+
+  it('supports keyboard tabs and asks for admin authentication only when saving', async () => {
+    admin.readAdminToken.mockReturnValue('');
+    render(<Harness initial={versionedConfig('v1', 'Initial')} />);
+    expect(screen.queryByLabelText('Confirmá con la clave administrativa')).not.toBeInTheDocument();
+
+    const teamsTab = screen.getByRole('tab', { name: 'Pantalla' });
+    fireEvent.keyDown(teamsTab, { key: 'ArrowLeft' });
+    expect(screen.getByRole('tab', { name: 'General' })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.change(screen.getByDisplayValue('Initial'), { target: { value: 'Draft title' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar en servidor' }));
+
+    expect(await screen.findByLabelText('Confirmá con la clave administrativa')).toBeInTheDocument();
+    expect(admin.updateServerConfig).not.toHaveBeenCalled();
+  });
+
+  it('protects a dirty draft with an accessible discard confirmation', async () => {
+    render(<Harness initial={versionedConfig('v1', 'Initial')} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'General' }));
+    fireEvent.change(screen.getByDisplayValue('Initial'), { target: { value: 'Draft title' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar configuración' }));
+    expect(screen.getByRole('alertdialog', { name: '¿Dejar la cocina como estaba?' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(screen.getByRole('dialog', { name: 'Configuración' })).toBeInTheDocument();
+  });
+
+  it('keeps focus in the edited field while dirty state and escape behavior update', () => {
+    render(<Harness initial={versionedConfig('v1', 'Initial')} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'General' }));
+    const title = screen.getByDisplayValue('Initial');
+    title.focus();
+    fireEvent.change(title, { target: { value: 'Still focused' } });
+    expect(document.activeElement).toBe(title);
+  });
+
+  it('restores focus inside settings after cancelling the nested discard dialog', () => {
+    render(<Harness initial={versionedConfig('v1', 'Initial')} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'General' }));
+    fireEvent.change(screen.getByDisplayValue('Initial'), { target: { value: 'Dirty' } });
+    const close = screen.getByRole('button', { name: 'Cerrar configuración' });
+    close.focus();
+    fireEvent.click(close);
+    expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Configuración' })).toBeInTheDocument();
+    expect(close).toHaveFocus();
+  });
+
+  it('closes with browser-local changes without admin authentication or discard confirmation', () => {
+    admin.readAdminToken.mockReturnValue('');
+    const initial = versionedConfig('v1', 'Initial');
+    const onScreenStateChange = vi.fn();
+    const onClose = vi.fn();
+    render(<SettingsPanel
+      config={initial}
+      screenState={createDefaultScreenState(['a', 'b'], 'a')}
+      onApplyConfig={vi.fn()}
+      onSavedConfig={vi.fn()}
+      onScreenStateChange={onScreenStateChange}
+      onClose={onClose}
+    />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Pantalla' }));
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'split-vertical' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar configuración' }));
+
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Confirmá con la clave administrativa')).not.toBeInTheDocument();
+    expect(admin.updateServerConfig).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(onScreenStateChange.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({ layout: 'split-vertical' }));
+  });
 });

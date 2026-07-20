@@ -7,6 +7,7 @@ interface GeneralTabProps {
   slaWindowHours: number;
   reportEnabled: boolean;
   teamMembers: string[];
+  selectedTeamName: string;
   newMemberName: string;
   setNewMemberName: (value: string) => void;
   addTeamMember: (name: string) => void;
@@ -21,6 +22,7 @@ export function GeneralTab({
   slaWindowHours,
   reportEnabled,
   teamMembers,
+  selectedTeamName,
   newMemberName,
   setNewMemberName,
   addTeamMember,
@@ -31,7 +33,7 @@ export function GeneralTab({
 }: GeneralTabProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
-      <Section label="General">
+      <Section label="Panel · alcance Global">
         <FieldRow label="Título del panel">
           <input
             value={title}
@@ -39,6 +41,9 @@ export function GeneralTab({
             style={inputStyle}
           />
         </FieldRow>
+      </Section>
+
+      <Section label={`Reporte · Team ${selectedTeamName}`}>
         <FieldRow label="Reporte habilitado">
           <input type="checkbox" checked={reportEnabled} onChange={(e) => onReportEnabledChange(e.target.checked)} />
         </FieldRow>
@@ -54,7 +59,7 @@ export function GeneralTab({
         </FieldRow>
       </Section>
 
-      <Section label="Integrantes">
+      <Section label={`Integrantes · Team ${selectedTeamName}`}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {teamMembers.map((name, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
