@@ -16,6 +16,7 @@ import metadataRouter from './routes/metadata';
 import webhooksRouter from './routes/webhooks';
 import reconcileRouter from './routes/reconcile';
 import screensRouter from './routes/screens';
+import displayV2Router from './routes/display-v2';
 import { getReconciliationHealth } from './supabase';
 
 export function createApp(): Application {
@@ -63,6 +64,7 @@ export function createApp(): Application {
   app.use(webhooksRouter);
   app.use(reconcileRouter);
   app.use(screensRouter);
+  app.use(displayV2Router);
 
   // In production the client is served as static files by Vercel; nothing to do here.
 

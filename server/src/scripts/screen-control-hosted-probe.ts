@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { EMPTY_FILTER, ScreenState } from '@camtom/shared';
 import { assertScreenControlProbeTarget } from '../screen-control-probe-guard';
@@ -139,6 +139,28 @@ async function main() {
     if (ack.error || ack.data !== true) throw new Error(`ACK probe failed: ${ack.error?.message ?? 'rejected'}`);
     const verified = await admin.from('screen_devices').select('last_applied_version').eq('id', deviceId).single();
     if (verified.error || Number(verified.data.last_applied_version) !== 2) throw new Error('ACK persistence probe failed');
+    const installationId = randomUUID();
+    const upgraded = await admin.from('screen_devices').update({
+      protocol_version: 2,
+      installation_id: installationId,
+      migration_state: 'v2_pending',
+    }).eq('id', deviceId);
+    if (upgraded.error) throw new Error(`v2 device schema probe failed: ${upgraded.error.message}`);
+    const credentialHash = createHash('sha256').update(randomUUID()).digest('hex');
+    const credential = await admin.from('screen_device_credentials').insert({
+      device_id: deviceId,
+      credential_hash: credentialHash,
+      generation: 1,
+    }).select('id').single();
+    if (credential.error) throw new Error(`v2 credential schema probe failed: ${credential.error.message}`);
+    const v2Sync = await admin.rpc('sync_screen_device_v2', {
+      p_credential_id: credential.data.id,
+      p_applied_version: 2,
+      p_capabilities: { hostedProbe: true, protocolVersion: 2 },
+    });
+    if (v2Sync.error || v2Sync.data?.status !== 'ok') {
+      throw new Error(`v2 sync probe failed: ${v2Sync.error?.message ?? v2Sync.data?.status ?? 'unknown'}`);
+    }
     console.log(`[screen-probe] non-production RLS/Realtime/CAS/ACK passed for ${target.projectRef}`);
   } catch (error) {
     primaryFailure = error;

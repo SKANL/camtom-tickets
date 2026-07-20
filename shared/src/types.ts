@@ -187,6 +187,10 @@ export interface ScreenDevice {
   revokedAt: string | null;
   createdAt: string;
   health: ScreenDeviceHealth;
+  protocolVersion?: 1 | 2;
+  installationId?: string | null;
+  supersededBy?: string | null;
+  replacementForDeviceId?: string | null;
 }
 
 export interface ScreenControlFeatures {

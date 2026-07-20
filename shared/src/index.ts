@@ -41,3 +41,16 @@ export {
   SCREEN_HEARTBEAT_INTERVAL_MS,
   SCREEN_STATE_POLL_INTERVAL_MS,
 } from './screen-control';
+export type {
+  DisplayV2Capabilities,
+  CreateDisplayPairingRequest,
+  CreateDisplayPairingResponse,
+  DisplayPairingStatusResponse,
+  CreateDisplaySessionRequest,
+  CreateDisplaySessionResponse,
+  DisplaySyncRequest,
+  DisplaySyncResponse,
+  ClaimDisplayPairingV2Request,
+  RotateDisplayCredentialResponse,
+} from './screen-protocol-v2';
+export { DISPLAY_PROTOCOL_VERSION, DISPLAY_SYNC_INTERVAL_MS } from './screen-protocol-v2';
