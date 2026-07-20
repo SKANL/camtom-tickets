@@ -9,9 +9,9 @@ import {
 } from '@camtom/shared';
 import { getSupabaseAdmin } from './supabase';
 
-interface ScreenDeviceRow {
+export interface ScreenDeviceRow {
   id: string;
-  auth_user_id: string;
+  auth_user_id: string | null;
   display_name: string | null;
   desired_state: ScreenState | null;
   state_version: number;
@@ -22,6 +22,10 @@ interface ScreenDeviceRow {
   paired_at: string | null;
   revoked_at: string | null;
   created_at: string;
+  protocol_version?: number;
+  installation_id?: string | null;
+  superseded_by?: string | null;
+  replacement_for_device_id?: string | null;
 }
 
 interface PairingRow {
@@ -219,7 +223,17 @@ export async function setScreenDesiredState(input: {
 }
 
 export async function revokeScreenDevice(deviceId: string): Promise<boolean> {
-  const { data, error } = await getSupabaseAdmin().from('screen_devices')
+  const admin = getSupabaseAdmin();
+  const lookup = await admin.from('screen_devices').select('id, protocol_version')
+    .eq('id', deviceId).maybeSingle();
+  if (lookup.error) throw new Error(`screen revoke lookup failed: ${lookup.error.message}`);
+  if (!lookup.data) return false;
+  if (lookup.data.protocol_version === 2) {
+    const { data, error } = await admin.rpc('revoke_screen_device_v2', { p_device_id: deviceId });
+    if (error) throw new Error(`screen v2 revoke failed: ${error.message}`);
+    return data === true;
+  }
+  const { data, error } = await admin.from('screen_devices')
     .update({ revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq('id', deviceId).is('revoked_at', null).select('id');
   if (error) throw new Error(`screen revoke failed: ${error.message}`);
@@ -262,5 +276,9 @@ export function mapScreenDevice(row: ScreenDeviceRow): ScreenDevice {
       stateVersion: Number(row.state_version),
       lastAppliedVersion: Number(row.last_applied_version),
     }),
+    protocolVersion: row.protocol_version === 2 ? 2 : 1,
+    installationId: row.installation_id ?? null,
+    supersededBy: row.superseded_by ?? null,
+    replacementForDeviceId: row.replacement_for_device_id ?? null,
   };
 }

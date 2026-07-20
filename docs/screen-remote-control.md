@@ -1,5 +1,7 @@
 # Universal browser screen control
 
+> **Protocol v2 transition:** the additive server protocol that removes CAPTCHA, Supabase Auth, storage, and WebSocket requirements from TVs is documented in [display-protocol-v2-backend.md](display-protocol-v2-backend.md). This document describes the still-supported protocol v1 client and its rollback path.
+
 This feature controls **application state inside the Camtom dashboard**. It is independent of TV brand and operating system because the only TV requirement is a browser capable of loading the site. It does not control power, hardware volume, browser tabs, HDMI inputs, or operating-system settings.
 
 ## Architecture
