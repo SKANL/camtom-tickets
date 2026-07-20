@@ -98,48 +98,17 @@ export function FridayReport({ issues, playSuccess, config }: FridayReportProps)
   const { totalResolved, slaRate, avgTime, priorityBreakdown } = metrics;
 
   return (
-    <div
-      style={{
-        flex: 1,
-        padding: 'var(--space-xl)',
-        overflow: 'auto',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--space-xl)',
-      }}
-    >
-      <div style={{ textAlign: 'center' }}>
-        <h1
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 'var(--text-4xl)',
-            color: 'var(--color-mustard)',
-            letterSpacing: '0.05em',
-            textShadow: '2px 2px 0 rgba(0,0,0,0.3)',
-          }}
-        >
-          <IconChart size={32} style={{ verticalAlign: 'middle', marginRight: 8 }} /> Reporte del viernes
+    <div className="report-view">
+      <header className="report-hero">
+        <p className="report-kicker">PASE SEMANAL · ÚLTIMOS 7 DÍAS</p>
+        <h1>
+          <IconChart size={32} /> Reporte del viernes
         </h1>
-        <p
-          style={{
-            fontFamily: 'var(--font-body)',
-            color: 'rgba(255,255,255,0.5)',
-            fontSize: 'var(--text-sm)',
-          }}
-        >
-          Resumen semanal de resolución
-        </p>
-      </div>
+        <p>Resumen semanal de resolución</p>
+      </header>
 
       {/* Metric cards row */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 'var(--space-lg)',
-          justifyContent: 'center',
-          flexWrap: 'wrap',
-        }}
-      >
+      <div className="report-metrics">
         <MetricCard label="Resueltos" value={String(totalResolved)} color="var(--color-lettuce)" />
         <MetricCard
           label="Cumplimiento SLA"
@@ -150,156 +119,65 @@ export function FridayReport({ issues, playSuccess, config }: FridayReportProps)
       </div>
 
       {/* Priority breakdown */}
-      <div
-        style={{
-          background: 'var(--bg-card)',
-          borderRadius: 'var(--radius-card)',
-          padding: 'var(--space-lg)',
-          border: '2px dashed rgba(255,255,255,0.1)',
-        }}
-      >
-        <h3
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 'var(--text-xl)',
-            color: 'var(--color-mayo)',
-            marginBottom: 'var(--space-md)',
-          }}
-        >
-          Por prioridad
-        </h3>
-        <div style={{ display: 'flex', gap: 'var(--space-lg)', flexWrap: 'wrap' }}>
+      <section className="report-card report-priorities">
+        <h3>Por prioridad</h3>
+        <div className="report-priority-grid">
           <PriorityStat icon={<IconFire size={20} />} label="Urgente" value={priorityBreakdown.urgent} color="var(--priority-urgent)" />
           <PriorityStat icon={<IconFlash size={20} />} label="Alta" value={priorityBreakdown.high} color="var(--priority-high)" />
           <PriorityStat icon={<IconClipboard size={20} />} label="Media" value={priorityBreakdown.medium} color="var(--priority-medium)" />
           <PriorityStat icon={<IconCheck size={20} />} label="Baja/Sin" value={priorityBreakdown.low} color="var(--priority-low)" />
         </div>
-      </div>
+      </section>
 
       {/* Team table */}
-      <div
-        style={{
-          background: 'var(--bg-card)',
-          borderRadius: 'var(--radius-card)',
-          padding: 'var(--space-lg)',
-          border: '2px dashed rgba(255,255,255,0.1)',
-        }}
-      >
-        <h3
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 'var(--text-xl)',
-            color: 'var(--color-mayo)',
-            marginBottom: 'var(--space-md)',
-          }}
-        >
-          <IconChefHat size={24} style={{ verticalAlign: 'middle', marginRight: 8 }} /> Rendimiento del equipo
-        </h3>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '2fr 1fr 1fr',
-            gap: 'var(--space-sm)',
-            fontFamily: 'var(--font-body)',
-            fontSize: 'var(--text-base)',
-          }}
-        >
-          {/* Header */}
-          <div style={{ fontWeight: 700, color: 'var(--color-mustard)', borderBottom: '2px solid rgba(255,255,255,0.2)', paddingBottom: 'var(--space-sm)' }}>
-            Chef
-          </div>
-          <div style={{ fontWeight: 700, color: 'var(--color-mustard)', textAlign: 'center', borderBottom: '2px solid rgba(255,255,255,0.2)', paddingBottom: 'var(--space-sm)' }}>
-            Resueltos
-          </div>
-          <div style={{ fontWeight: 700, color: 'var(--color-mustard)', textAlign: 'center', borderBottom: '2px solid rgba(255,255,255,0.2)', paddingBottom: 'var(--space-sm)' }}>
-            Incumplimientos
-          </div>
-
-          {/* Rows */}
-          {teamStats.map((member) => (
-            <React.Fragment key={member.name}>
-              <div
-                style={{
-                  padding: 'var(--space-sm) 0',
-                  borderBottom: '1px solid rgba(255,255,255,0.05)',
-                  color: member.name === 'Sin asignar' ? 'rgba(255,255,255,0.4)' : 'var(--color-mayo)',
-                }}
-              >
-                {member.name}
-              </div>
-              <div
-                style={{
-                  padding: 'var(--space-sm) 0',
-                  textAlign: 'center',
-                  borderBottom: '1px solid rgba(255,255,255,0.05)',
-                  color: member.resolved > 0 ? 'var(--color-lettuce)' : 'rgba(255,255,255,0.4)',
-                }}
-              >
-                {member.resolved}
-              </div>
-              <div
-                style={{
-                  padding: 'var(--space-sm) 0',
-                  textAlign: 'center',
-                  borderBottom: '1px solid rgba(255,255,255,0.05)',
-                  color: member.breaches > 0 ? 'var(--color-ketchup)' : 'rgba(255,255,255,0.4)',
-                }}
-              >
-                {member.breaches}
-              </div>
-            </React.Fragment>
-          ))}
+      <section className="report-card report-team">
+        <h3><IconChefHat size={24} /> Rendimiento del equipo</h3>
+        <div className="report-table-scroll">
+          <table className="report-table" aria-label="Rendimiento del equipo">
+            <thead>
+              <tr>
+                <th scope="col">Chef</th>
+                <th scope="col">Resueltos</th>
+                <th scope="col">Incumplimientos</th>
+              </tr>
+            </thead>
+            <tbody>
+              {teamStats.map((member) => (
+                <tr key={member.name}>
+                  <th scope="row" className={member.name === 'Sin asignar' ? 'is-muted' : ''}>{member.name}</th>
+                  <td className={`report-table__number ${member.resolved > 0 ? 'is-success' : 'is-muted'}`}>{member.resolved}</td>
+                  <td className={`report-table__number ${member.breaches > 0 ? 'is-danger' : 'is-muted'}`}>{member.breaches}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
 
 function MetricCard({ label, value, color }: { label: string; value: string; color: string }) {
   return (
-    <div
-      style={{
-        background: 'var(--bg-card)',
-        borderRadius: 'var(--radius-card)',
-        padding: 'var(--space-lg) var(--space-xl)',
-        minWidth: 180,
-        textAlign: 'center',
-        border: `2px dashed ${color}`,
-        boxShadow: 'var(--shadow-card)',
-      }}
-    >
-      <div
-        style={{
-          fontFamily: 'var(--font-display)',
-          fontSize: 'var(--text-3xl)',
-          color,
-          lineHeight: 1,
-        }}
-      >
+    <article className="report-metric" style={{ '--metric-color': color } as React.CSSProperties}>
+      <div className="report-metric__value">
         {value}
       </div>
-      <div
-        style={{
-          fontFamily: 'var(--font-body)',
-          fontSize: 'var(--text-sm)',
-          color: 'rgba(255,255,255,0.6)',
-          marginTop: 'var(--space-xs)',
-        }}
-      >
+      <div className="report-metric__label">
         {label}
       </div>
-    </div>
+    </article>
   );
 }
 
 function PriorityStat({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number; color: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="report-priority" style={{ '--priority-color': color } as React.CSSProperties}>
       {icon}
-      <span style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-xl)', color }}>
+      <span className="report-priority__value">
         {value}
       </span>
-      <span style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.4)' }}>{label}</span>
+      <span className="report-priority__label">{label}</span>
     </div>
   );
 }

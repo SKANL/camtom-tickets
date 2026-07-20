@@ -1,72 +1,104 @@
 :root {
-  /* Overcooked Color Palette */
-  --color-tomato: #FF6347;
-  --color-mustard: #FFD700;
-  --color-ketchup: #D32F2F;
-  --color-lettuce: #4CAF50;
-  --color-mayo: #FFFDD0;
-  --color-avocado: #6B8E23;
-  --color-oil: #FF8C00;
+  color-scheme: dark;
 
-  /* Background */
-  --bg-dark: #2C1810;
-  --bg-card: #4A2E28;
-  --bg-card-hover: #5A3832;
-  --bg-header: #1A0E0A;
+  /* Original cooperative-kitchen palette (no third-party game assets). */
+  --color-tomato: #ff6b4a;
+  --color-mustard: #ffd166;
+  --color-ketchup: #e3483e;
+  --color-lettuce: #73d39a;
+  --color-mayo: #fff8dc;
+  --color-avocado: #79a85b;
+  --color-oil: #ff9f43;
+  --color-ink: #21120e;
 
-  /* Status Colors */
+  --bg-dark: #26140f;
+  --bg-header: #170c09;
+  --bg-elevated: #342019;
+  --bg-card: #462b24;
+  --bg-card-hover: #54342b;
+  --bg-input: rgba(9, 5, 4, 0.44);
+  --surface-soft: rgba(255, 248, 220, 0.055);
+  --surface-strong: rgba(255, 248, 220, 0.1);
+  --border-soft: rgba(255, 248, 220, 0.12);
+  --border-strong: rgba(255, 248, 220, 0.24);
+  --text-primary: #fffaf0;
+  --text-secondary: #d8c8bd;
+  --text-muted: #a9978d;
+
   --sla-ok: var(--color-lettuce);
-
-  /* SLA traffic light — 3 colours driven by the timer, not priority */
   --sla-green: var(--color-lettuce);
   --sla-amber: var(--color-oil);
   --sla-red: var(--color-ketchup);
-
-  /* Priority Colors */
   --priority-urgent: var(--color-ketchup);
   --priority-high: var(--color-oil);
-  --priority-medium: #E0A82E;
+  --priority-medium: #e8b94f;
   --priority-low: var(--color-lettuce);
-  --priority-none: #9E9E9E;
+  --priority-none: #a89b94;
 
-  /* Typography */
-  --font-display: 'Bangers', cursive;
-  --font-body: 'Comic Neue', cursive;
+  --font-display: 'Bangers', 'Trebuchet MS', sans-serif;
+  --font-body: 'Comic Neue', 'Trebuchet MS', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'Courier New', monospace;
 
-  /* Spacing */
+  --space-2xs: 2px;
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 32px;
   --space-2xl: 48px;
+  --space-3xl: 64px;
 
-  /* Radii */
-  --radius-card: 24px;
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-card: 22px;
   --radius-pill: 999px;
-  --radius-sm: 8px;
 
-  /* Shadows */
-  --shadow-card: 0 4px 6px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2);
-  --shadow-card-hover: 0 8px 12px rgba(0, 0, 0, 0.4), 0 4px 8px rgba(0, 0, 0, 0.3);
+  --shadow-card: 0 12px 28px rgba(8, 4, 3, 0.3), 0 2px 4px rgba(8, 4, 3, 0.24);
+  --shadow-card-hover: 0 18px 36px rgba(8, 4, 3, 0.42), 0 4px 8px rgba(8, 4, 3, 0.25);
+  --shadow-focus: 0 0 0 4px rgba(255, 209, 102, 0.24);
 
-  /* Timing */
-  --timing-bounce: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --timing-bounce: cubic-bezier(0.2, 0.9, 0.25, 1.18);
   --timing-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 140ms;
+  --duration-base: 220ms;
+  --duration-slow: 360ms;
 
-  /* Font sizes for TV readability */
-  --text-xs: 0.75rem;
-  --text-sm: 0.875rem;
+  --text-xs: 0.78rem;
+  --text-xs: clamp(0.75rem, 0.72rem + 0.08vw, 0.82rem);
+  --text-sm: 0.92rem;
+  --text-sm: clamp(0.875rem, 0.83rem + 0.12vw, 0.98rem);
   --text-base: 1rem;
+  --text-base: clamp(1rem, 0.94rem + 0.18vw, 1.12rem);
   --text-lg: 1.25rem;
-  --text-xl: 1.5rem;
+  --text-lg: clamp(1.18rem, 1.08rem + 0.3vw, 1.38rem);
+  --text-xl: 1.55rem;
+  --text-xl: clamp(1.4rem, 1.2rem + 0.5vw, 1.8rem);
   --text-2xl: 2rem;
-  --text-3xl: 2.5rem;
-  --text-4xl: 3.5rem;
+  --text-2xl: clamp(1.75rem, 1.45rem + 0.8vw, 2.35rem);
+  --text-3xl: 2.4rem;
+  --text-3xl: clamp(2.05rem, 1.6rem + 1.2vw, 3rem);
+  --text-4xl: 3rem;
+  --text-4xl: clamp(2.5rem, 1.9rem + 1.8vw, 4rem);
 
-  /* Visual Overhaul */
+  --control-height-sm: 36px;
+  --control-height: 44px;
+  --control-height-lg: 52px;
+  --safe-area-tv: 20px;
+  --safe-area-tv: clamp(12px, 1.4vw, 32px);
+  --pane-gap: 12px;
+  --pane-gap: clamp(8px, 0.8vw, 16px);
+
   --timer-bar-height: 8px;
   --siren-border-color: var(--color-ketchup);
-  --arrival-duration: 2s;
-  --burnt-opacity-min: 0.4;
+  --arrival-duration: 420ms;
+  --burnt-opacity-min: 0.82;
+}
+
+@media (min-width: 1900px) {
+  :root {
+    --control-height: 50px;
+    --safe-area-tv: 32px;
+    --safe-area-tv: clamp(20px, 1.7vw, 48px);
+  }
 }

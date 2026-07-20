@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Issue, TimerInfo, ConfigResponse, TimerState } from '@camtom/shared';
 import { SLATimer } from './SLATimer';
 import { IconPerson, resolveIcon } from './Icons';
@@ -10,6 +10,8 @@ interface TicketCardProps {
   config?: ConfigResponse | null;
   /** 'hero' = big untaken card (default). 'compact' = in-progress strip card. */
   variant?: 'hero' | 'compact';
+  /** True only for issues that arrived after the initial board snapshot. */
+  isNew?: boolean;
 }
 
 function shortState(s: TimerState): string {
@@ -39,20 +41,14 @@ const defaultStateLabels: Record<string, { label: string; icon: string }> = {
   triaged: { label: 'Triage', icon: 'search' },
 };
 
-export function TicketCard({ issue, timer, config, variant = 'hero' }: TicketCardProps) {
+export function TicketCard({ issue, timer, config, variant = 'hero', isNew = false }: TicketCardProps) {
   const stateLabels = config?.dashboard?.stateLabels ?? defaultStateLabels;
   const animationIntensity = config?.dashboard?.displayOptions?.animationIntensity ?? 'full';
   const compact = variant === 'compact';
 
   const stateType = stateLabels[issue.state.type] || { label: issue.state.name, icon: 'clipboard' };
   const [rotation] = useState(() => (compact ? 0 : hashRotation(issue.id)));
-  const [isNew, setIsNew] = useState(true);
-
-  // The arrival class is present on the first paint, so it never flashes visible → hidden.
-  useEffect(() => {
-    const t = setTimeout(() => setIsNew(false), 2500);
-    return () => clearTimeout(t);
-  }, []);
+  const priority = config?.dashboard.priorityLabels?.[issue.priority];
 
   const timerState = timer?.state;
   const expired = timerState === 'EXPIRED';
@@ -66,21 +62,19 @@ export function TicketCard({ issue, timer, config, variant = 'hero' }: TicketCar
   const cssVars = { '--ticket-rotation': `${rotation}deg` } as React.CSSProperties;
 
   const classes = ['ticket-card', compact ? 'ticket-card-compact' : 'ticket-card-hero'];
-  if (expired && animationIntensity !== 'off') classes.push('siren-flash');
+  if (expired && animationIntensity === 'full') classes.push('siren-flash');
   if (isNew && animationIntensity !== 'off') {
     classes.push('arrival-bounce');
     if (animationIntensity === 'full' && !compact) classes.push('arrival-glow');
   }
-  if (isBurnt && animationIntensity !== 'off') classes.push('burnt-fade');
-  if (critical && animationIntensity !== 'off') classes.push('ticket-critical-pulse');
-  if (heating && animationIntensity !== 'off') classes.push('ticket-heating-pulse');
+  if (isBurnt && animationIntensity === 'full') classes.push('burnt-fade');
+  if (critical && animationIntensity === 'full') classes.push('ticket-critical-pulse');
+  if (heating && animationIntensity === 'full') classes.push('ticket-heating-pulse');
 
   return (
     <div
       className={classes.join(' ')}
       style={{
-        background: 'var(--bg-card)',
-        border: '2px dashed rgba(255,255,255,0.12)',
         borderTop: `4px solid ${accent}`,
         borderRadius: 'var(--radius-card)',
         padding: compact ? 'var(--space-md)' : 'var(--space-lg)',
@@ -92,22 +86,26 @@ export function TicketCard({ issue, timer, config, variant = 'hero' }: TicketCar
         width: '100%',
         minWidth: 0,
         overflow: 'hidden',
-        transform: `rotate(${rotation}deg)`,
-        opacity: isBurnt ? 0.6 : 1,
+        opacity: isBurnt ? 0.86 : 1,
         ...cssVars,
       }}
     >
       {/* State chip row */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 'var(--text-xs)', color: issue.state.type === 'completed' ? 'var(--color-lettuce)' : 'rgba(255,255,255,0.55)', display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+      <div className="ticket-meta-row">
+        <span className="ticket-state-chip" style={{ color: issue.state.type === 'completed' ? 'var(--color-lettuce)' : undefined }}>
           {resolveIcon(stateType.icon, 14)}
           <span style={{ whiteSpace: 'nowrap' }}>{stateType.label}</span>
         </span>
+        {priority && (
+          <span className="ticket-priority-chip" style={{ '--priority-color': priority.color } as React.CSSProperties}>
+            <span className="priority-dot" /> {priority.label}
+          </span>
+        )}
         <a
+          className="ticket-identifier"
           href={`https://linear.app/issue/${issue.identifier}`}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ textDecoration: 'none', color: 'rgba(255,255,255,0.7)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}
           onClick={(e) => e.stopPropagation()}
         >
           #{issue.identifier}
@@ -190,6 +188,7 @@ export function TicketCard({ issue, timer, config, variant = 'hero' }: TicketCar
             strokeWidth={compact ? 4 : 5}
             label={compact ? undefined : shortState(timer.state)}
             timerStyle={config?.dashboard?.displayOptions?.timerStyle}
+            animationIntensity={animationIntensity}
           />
         )}
       </div>

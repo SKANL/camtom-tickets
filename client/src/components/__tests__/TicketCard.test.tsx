@@ -26,8 +26,10 @@ const mockTimer = {
 };
 
 describe('TicketCard', () => {
-  it('starts its arrival animation on the first paint', () => {
-    const { container } = render(<TicketCard issue={mockIssue} config={null} />);
+  it('animates only when the board marks the issue as a real arrival', () => {
+    const { container, rerender } = render(<TicketCard issue={mockIssue} config={null} />);
+    expect(container.firstElementChild).not.toHaveClass('arrival-bounce');
+    rerender(<TicketCard issue={mockIssue} config={null} isNew />);
     expect(container.firstElementChild).toHaveClass('arrival-bounce');
   });
 
@@ -63,6 +65,7 @@ describe('TicketCard', () => {
     // SLATimer renders an SVG
     const svg = container.querySelector('svg');
     expect(svg).toBeInTheDocument();
+    expect(container.firstElementChild).toHaveStyle({ borderTop: '4px solid var(--sla-green)' });
   });
 
   it('renders Done status for completed issues', () => {

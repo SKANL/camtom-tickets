@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   ConfigResponse,
   Issue,
@@ -26,6 +26,10 @@ interface TeamBoardPaneProps {
   loading: boolean;
   error: string | null;
   readOnly?: boolean;
+  compactPresentation?: boolean;
+  rotation?: { enabled: boolean; intervalSeconds: number; paused: boolean };
+  presentationCommand?: { id: string; type: 'next' | 'previous' | 'restartRotation' };
+  onPresentationCommandHandled?: (commandId: string) => void;
   onChange: (update: Partial<ScreenPaneState>) => void;
 }
 
@@ -43,6 +47,10 @@ export function TeamBoardPane({
   loading,
   error,
   readOnly = false,
+  compactPresentation = false,
+  rotation,
+  presentationCommand,
+  onPresentationCommandHandled,
   onChange,
 }: TeamBoardPaneProps) {
   const settings = settingsByTeam[pane.teamId];
@@ -56,19 +64,27 @@ export function TeamBoardPane({
     [config, pane.teamId, settings],
   );
   const accent = settings?.accent ?? team?.accent ?? 'var(--color-tomato)';
+  const lastReportCommandId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (pane.view !== 'report' || !presentationCommand
+      || lastReportCommandId.current === presentationCommand.id) return;
+    lastReportCommandId.current = presentationCommand.id;
+    onPresentationCommandHandled?.(presentationCommand.id);
+  }, [onPresentationCommandHandled, pane.view, presentationCommand]);
 
   return (
     <section
-      className="team-board-pane"
+      className={`team-board-pane ${compactPresentation ? 'team-board-pane--compact' : ''}`}
       aria-label={`${paneId === 'left' ? 'Panel izquierdo' : 'Panel derecho'}: ${team?.name ?? 'sin team'}`}
       style={{ '--pane-accent': accent } as React.CSSProperties}
     >
       <div className="pane-toolbar">
         {!readOnly && (
-          <label>
+          <label className="pane-team-select">
             <span className="sr-only">Team del {paneId === 'left' ? 'panel izquierdo' : 'panel derecho'}</span>
             <select
-              aria-label={`Team del panel ${paneId === 'left' ? 'izquierdo' : 'derecho'}`}
+              aria-label={`Team del panel ${paneId === 'left' ? 'izquierdo' : 'derecho'}: ${team?.name ?? 'sin team'}`}
               value={pane.teamId}
               onChange={(event) => onChange({ teamId: event.target.value })}
             >
@@ -76,7 +92,7 @@ export function TeamBoardPane({
             </select>
           </label>
         )}
-        <span className="pane-team-name">{team?.name ?? 'Team no disponible'}</span>
+        <span className="pane-team-name" aria-hidden="true">{team?.name ?? 'Team no disponible'}</span>
         {readOnly ? (
           <span className="pane-controlled-state" aria-label="Vista controlada remotamente">
             {pane.view === 'report' ? 'Reporte' : 'Tablero'} · Controlado desde la laptop
@@ -101,11 +117,17 @@ export function TeamBoardPane({
           {!readOnly && <FilterBar metadata={metadata} filter={pane.filter} onChange={(filter) => onChange({ filter })} />}
           <Dashboard
             issues={view.filteredIssues}
+            issueUniverse={issues}
             doneToday={view.doneToday}
             timers={timers}
             loading={loading}
             error={error}
             config={effectiveConfig}
+            presentationMode={readOnly}
+            compactPresentation={compactPresentation}
+            rotation={rotation}
+            presentationCommand={presentationCommand}
+            onPresentationCommandHandled={onPresentationCommandHandled}
           />
         </>
       )}

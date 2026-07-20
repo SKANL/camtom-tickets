@@ -75,6 +75,19 @@ describe('SLATimer', () => {
     expect(wrapper.classList.contains('expired-burn')).toBe(false);
   });
 
+  it('keeps critical state legible without motion when animation is disabled', () => {
+    const criticalTimer: TimerInfo = { ...baseTimer, remaining: 10_000, state: 'CRITICAL' };
+    const { container } = render(<SLATimer timer={criticalTimer} animationIntensity="off" />);
+    expect(container.firstElementChild).not.toHaveClass('pulse-critical');
+    expect(container.querySelector('svg')).toBeInTheDocument();
+    expect(container.querySelector<SVGElement>('.sla-timer-circle__progress')?.style.transition).toBe('none');
+  });
+
+  it('removes bar progress transitions when animation is disabled', () => {
+    const { container } = render(<SLATimer timer={baseTimer} timerStyle="bar" animationIntensity="off" />);
+    expect(container.querySelector<HTMLElement>('.sla-timer-bar__fill')?.style.transition).toBe('none');
+  });
+
   it('renders with custom size', () => {
     const { container } = render(<SLATimer timer={baseTimer} size={128} />);
     const svg = container.querySelector('svg');

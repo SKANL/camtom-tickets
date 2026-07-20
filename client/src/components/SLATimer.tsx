@@ -9,6 +9,7 @@ interface SLATimerProps {
   strokeWidth?: number;
   label?: string;
   timerStyle?: 'circle' | 'bar';
+  animationIntensity?: 'off' | 'subtle' | 'full';
 }
 
 const STROKE_WIDTH = 6;
@@ -70,6 +71,7 @@ export function SLATimer({
   strokeWidth = STROKE_WIDTH,
   label,
   timerStyle = 'circle',
+  animationIntensity = 'full',
 }: SLATimerProps) {
   const { remaining, state, maxMinutes } = timer;
   const totalMs = maxMinutes * 60_000;
@@ -81,7 +83,7 @@ export function SLATimer({
   const smoothColor = progressColor(pct);
 
   // EXPIRED gets a slow burning pulse
-  const stateClass =
+  const stateClass = animationIntensity !== 'full' ? '' :
     state === 'CRITICAL' ? 'pulse-critical' :
     state === 'HEATING' ? 'pulse-heating' :
     state === 'WARMING' ? 'pulse-warming' :
@@ -91,6 +93,7 @@ export function SLATimer({
   if (timerStyle === 'bar') {
     return (
       <div
+        className="sla-timer-bar"
         style={{
           width: 120,
           display: 'flex',
@@ -111,12 +114,13 @@ export function SLATimer({
           }}
         >
           <div
+            className="sla-timer-bar__fill"
             style={{
               width: `${pct * 100}%`,
               height: '100%',
               background: `linear-gradient(90deg, ${meta.color}, ${smoothColor})`,
               borderRadius: 4,
-              transition: 'width 1s linear, background 0.5s ease',
+              transition: animationIntensity === 'off' ? 'none' : 'width 1s linear, background 0.5s ease',
               boxShadow: state === 'EXPIRED' || state === 'CRITICAL'
                 ? `0 0 6px ${meta.glowColor}`
                 : 'none',
@@ -135,7 +139,7 @@ export function SLATimer({
                 borderRadius: 2,
                 opacity: 0.7,
                 boxShadow: `0 0 8px ${meta.color}`,
-                animation: 'urgent-pulse 0.5s ease-in-out infinite',
+                animation: animationIntensity === 'full' ? 'urgent-pulse 0.5s ease-in-out infinite' : undefined,
               }}
             />
           )}
@@ -211,6 +215,7 @@ export function SLATimer({
         />
         {/* Progress arc with smooth color */}
         <circle
+          className="sla-timer-circle__progress"
           cx={center}
           cy={center}
           r={r}
@@ -223,7 +228,7 @@ export function SLATimer({
           transform={`rotate(-90 ${center} ${center})`}
           filter={state === 'EXPIRED' ? `url(#${filterId})` : undefined}
           style={{
-            transition: 'stroke-dashoffset 1s linear, stroke 0.3s ease',
+            transition: animationIntensity === 'off' ? 'none' : 'stroke-dashoffset 1s linear, stroke 0.3s ease',
           }}
         />
         {/* Decorative dots on EXPIRED — like embers */}
@@ -244,7 +249,7 @@ export function SLATimer({
             stroke={meta.glowColor}
             strokeWidth={2}
             opacity={0.4}
-            style={{ animation: 'urgent-pulse 1s ease-in-out infinite' }}
+            style={{ animation: animationIntensity === 'full' ? 'urgent-pulse 1s ease-in-out infinite' : undefined }}
           />
         )}
       </svg>
@@ -260,7 +265,7 @@ export function SLATimer({
             ? `0 0 8px ${meta.glowColor}`
             : '1px 1px 2px rgba(0,0,0,0.5)',
           lineHeight: 1,
-          transition: 'color 0.5s ease, text-shadow 0.5s ease',
+          transition: animationIntensity === 'off' ? 'none' : 'color 0.5s ease, text-shadow 0.5s ease',
         }}
       >
         {state === 'EXPIRED'
@@ -281,7 +286,7 @@ export function SLATimer({
             letterSpacing: '0.08em',
             whiteSpace: 'nowrap',
             opacity: state === 'FRESH' ? 0.5 : 1,
-            transition: 'opacity 0.3s ease',
+            transition: animationIntensity === 'off' ? 'none' : 'opacity 0.3s ease',
           }}
         >
           {state === 'EXPIRED' ? 'QUEMADO' : label}

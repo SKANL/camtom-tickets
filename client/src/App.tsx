@@ -9,6 +9,7 @@ import {
 import { Header } from './components/Header';
 import { SettingsPanel } from './components/SettingsPanel';
 import { TeamBoardPane } from './components/TeamBoardPane';
+import { BoardViewport } from './components/BoardViewport';
 import { useConfig } from './hooks/useConfig';
 import { useIssues } from './hooks/useIssues';
 import { useMetadata } from './hooks/useMetadata';
@@ -16,6 +17,7 @@ import { useScreenState } from './hooks/useScreenState';
 import { useSound } from './hooks/useSound';
 import { useTeamSLA } from './hooks/useTeamSLA';
 import { buildAlertSnapshot, diffAlerts, loadAlertMemory, saveAlertMemory } from './lib/alerts';
+import { resolveMuteOverride } from './lib/sound-policy';
 
 interface AppProps {
   externalConfig?: ConfigResponse;
@@ -23,6 +25,7 @@ interface AppProps {
   readOnlyDisplay?: boolean;
   issueCacheScope?: string;
   remoteDiagnostic?: string;
+  onPresentationCommandHandled?: (commandId: string) => void;
 }
 
 function App({
@@ -31,6 +34,7 @@ function App({
   readOnlyDisplay = false,
   issueCacheScope = 'legacy',
   remoteDiagnostic,
+  onPresentationCommandHandled,
 }: AppProps = {}) {
   const [showSettings, setShowSettings] = useState(false);
   const [previewConfig, setPreviewConfig] = useState<ConfigResponse | null>(null);
@@ -64,10 +68,6 @@ function App({
     alertMemory.current = loadAlertMemory(issueCacheScope);
   }, [issueCacheScope]);
 
-  useEffect(() => {
-    if (typeof screenState.muted === 'boolean') sound.setMuted(screenState.muted);
-  }, [screenState.muted, sound.setMuted]);
-
   const visibleTeamIds = useMemo(() => {
     const ids = [screenState.panes.left.teamId];
     if (screenState.layout === 'split-vertical' && screenState.panes.right?.teamId) {
@@ -75,6 +75,12 @@ function App({
     }
     return [...new Set(ids)];
   }, [screenState]);
+
+  const autoMute = visibleTeamIds.some((teamId) => settingsByTeam[teamId]?.displayOptions.autoMute === true);
+  const mutedOverride = resolveMuteOverride(screenState.muted, autoMute);
+  useEffect(() => {
+    sound.setMutedOverride(mutedOverride);
+  }, [mutedOverride, sound.setMutedOverride]);
 
   useEffect(() => {
     if (issuesLoading || !config) return;
@@ -101,13 +107,18 @@ function App({
     ? new Date(lastUpdated).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     : 'sin datos aún';
   const ready = !!config && teams.length > 0 && !!settingsByTeam[screenState.panes.left.teamId];
+  const paneSummary = (teamId: string, view: 'board' | 'report') => {
+    const count = issues.filter((issue) => issue.team?.id === teamId).length;
+    return `${view === 'report' ? 'Reporte' : 'Tablero'} · ${count} ticket${count === 1 ? '' : 's'}`;
+  };
 
   return (
-    <div className="app-shell" style={{ display: 'flex', flexDirection: 'column', width: '100vw', overflow: 'hidden' }}>
+    <div className={`app-shell ${readOnlyDisplay ? 'tv-display-shell legacy-display-shell' : ''}`} style={{ display: 'flex', flexDirection: 'column', width: '100vw', overflow: 'hidden' }}>
       <Header
         title={title}
         isMuted={sound.isMuted}
-        onToggleMute={sound.toggleMute}
+        onToggleMute={readOnlyDisplay ? undefined : sound.toggleMute}
+        muteLocked={sound.isMuteForced}
         isFriday={isFriday}
         config={headerConfig}
         activeTeam={screenState.layout === 'single' ? leftTeam : undefined}
@@ -124,8 +135,13 @@ function App({
           <span>{remoteDiagnostic ? `${remoteDiagnostic} · ` : ''}{screenState.layout === 'split-vertical' ? 'Vista dividida' : 'Vista simple'} · {issues.length} tickets sincronizados</span>
         </div>
         {ready && config ? (
-          <div className={`board-viewport ${screenState.layout}`}>
-            <TeamBoardPane
+          <BoardViewport
+            layout={screenState.layout}
+            leftLabel={leftTeam?.name ?? 'Panel izquierdo'}
+            rightLabel={teams.find((team) => team.id === screenState.panes.right?.teamId)?.name}
+            leftSummary={paneSummary(screenState.panes.left.teamId, screenState.panes.left.view)}
+            rightSummary={paneSummary(screenState.panes.right.teamId, screenState.panes.right.view)}
+            left={<TeamBoardPane
               paneId="left"
               pane={screenState.panes.left}
               teams={teams}
@@ -137,9 +153,13 @@ function App({
               loading={issuesLoading || configLoading}
               error={error}
               readOnly={readOnlyDisplay}
+              compactPresentation={readOnlyDisplay && screenState.layout === 'split-vertical'}
+              rotation={screenState.rotation}
+              presentationCommand={readOnlyDisplay ? screenState.presentationCommand : undefined}
+              onPresentationCommandHandled={onPresentationCommandHandled}
               onChange={(update) => updatePane('left', update)}
-            />
-            {screenState.layout === 'split-vertical' && screenState.panes.right && (
+            />}
+            right={screenState.layout === 'split-vertical' && screenState.panes.right ? (
               <TeamBoardPane
                 paneId="right"
                 pane={screenState.panes.right}
@@ -152,10 +172,14 @@ function App({
                 loading={issuesLoading || configLoading}
                 error={error}
                 readOnly={readOnlyDisplay}
+                compactPresentation={readOnlyDisplay}
+                rotation={screenState.rotation}
+                presentationCommand={readOnlyDisplay ? screenState.presentationCommand : undefined}
+                onPresentationCommandHandled={onPresentationCommandHandled}
                 onChange={(update) => updatePane('right', update)}
               />
-            )}
-          </div>
+            ) : undefined}
+          />
         ) : (
           <div role="status" style={{ padding: 'var(--space-xl)', color: 'rgba(255,255,255,.65)' }}>
             {configLoading ? 'Cargando configuración…' : 'No hay teams válidos configurados.'}
