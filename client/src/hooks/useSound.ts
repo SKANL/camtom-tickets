@@ -4,7 +4,9 @@ const MUTE_STORAGE_KEY = 'camtom-sound-muted';
 
 interface SoundHook {
   isMuted: boolean;
+  isMuteForced: boolean;
   setMuted: (muted: boolean) => void;
+  setMutedOverride: (muted: boolean | null) => void;
   toggleMute: () => void;
   playNewUrgent: () => void;
   playWarning: () => void;
@@ -14,14 +16,18 @@ interface SoundHook {
 }
 
 export function useSound(): SoundHook {
-  const [isMuted, setIsMuted] = useState(() => {
+  const [manualMuted, setManualMuted] = useState(() => {
     try {
       return localStorage.getItem(MUTE_STORAGE_KEY) === 'true';
     } catch {
       return false;
     }
   });
+  const [mutedOverride, setMutedOverride] = useState<boolean | null>(null);
+  const isMuted = mutedOverride ?? manualMuted;
   const cuelumeRef = useRef<any>(null);
+  const isMutedRef = useRef(isMuted);
+  isMutedRef.current = isMuted;
 
   // Lazy-load cuelume
   useEffect(() => {
@@ -29,7 +35,7 @@ export function useSound(): SoundHook {
     import('cuelume').then((mod) => {
       if (!cancelled) {
         cuelumeRef.current = mod;
-        mod.setEnabled(!isMuted);
+        mod.setEnabled(!isMutedRef.current);
       }
     }).catch((err) => {
       console.warn('[useSound] Failed to load cuelume:', err.message);
@@ -45,7 +51,7 @@ export function useSound(): SoundHook {
   }, [isMuted]);
 
   const setMuted = useCallback((muted: boolean) => {
-    setIsMuted(muted);
+    setManualMuted(muted);
     try {
       localStorage.setItem(MUTE_STORAGE_KEY, String(muted));
     } catch {
@@ -54,8 +60,8 @@ export function useSound(): SoundHook {
   }, []);
 
   const toggleMute = useCallback(() => {
-    setMuted(!isMuted);
-  }, [isMuted, setMuted]);
+    setMuted(!manualMuted);
+  }, [manualMuted, setMuted]);
 
   const play = useCallback((soundName: string) => {
     if (isMuted) return;
@@ -76,7 +82,9 @@ export function useSound(): SoundHook {
 
   return {
     isMuted,
+    isMuteForced: mutedOverride !== null,
     setMuted,
+    setMutedOverride,
     toggleMute,
     playNewUrgent,
     playWarning,

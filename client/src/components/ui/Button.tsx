@@ -1,9 +1,12 @@
 import React from 'react';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'neutral' | 'pill';
+export type ButtonSize = 'sm' | 'md' | 'lg';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant: ButtonVariant;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  loading?: boolean;
   /** Only meaningful for the `pill` variant (toggle on/off state). */
   active?: boolean;
 }
@@ -56,11 +59,28 @@ function pillStyle(active: boolean): React.CSSProperties {
   };
 }
 
-export function Button({ variant, active = false, style, children, ...rest }: ButtonProps) {
+export function Button({
+  variant = 'neutral',
+  size = 'md',
+  active = false,
+  loading = false,
+  className = '',
+  disabled,
+  style,
+  children,
+  ...rest
+}: ButtonProps) {
   const base = variant === 'pill' ? pillStyle(active) : VARIANT_BASE[variant];
   return (
-    <button style={{ ...base, ...style }} {...rest}>
-      {children}
+    <button
+      className={`ui-button ui-button--${variant} ui-button--${size} ${className}`.trim()}
+      style={{ ...base, ...style }}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      {...rest}
+    >
+      {loading && <span className="ui-button__spinner" aria-hidden="true" />}
+      <span className="ui-button__content">{children}</span>
     </button>
   );
 }
