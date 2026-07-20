@@ -23,6 +23,7 @@ export function DisplayRoute({ legacyRoot = false }: { legacyRoot?: boolean }) {
         readOnlyDisplay
         issueCacheScope={`screen:${scope}`}
         remoteDiagnostic={`Control remoto ${remote.transport}`}
+        onPresentationCommandHandled={remote.acknowledgePresentationCommand}
       />
     );
   }
