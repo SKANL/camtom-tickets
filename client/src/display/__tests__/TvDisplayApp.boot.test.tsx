@@ -2,7 +2,7 @@ import React from 'react';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConfigResponse, DisplaySyncResponse, ScreenDevice, ScreenState } from '@camtom/shared';
-import { TvDisplayApp } from '../TvDisplayApp';
+import { TvDisplayApp, pendingPresentationCommand } from '../TvDisplayApp';
 import { DisplayRuntime, type DisplaySnapshot } from '../display-runtime';
 
 const credential = {
@@ -86,6 +86,12 @@ afterEach(() => {
 });
 
 describe('real TV display boot', () => {
+  it('does not replay an already ACKed command after a display remount', () => {
+    const command = { id: 'command-1', type: 'next' as const };
+    const commandState = { ...state, presentationCommand: command };
+    expect(pendingPresentationCommand(commandState, { ...device, stateVersion: 4, lastAppliedVersion: 3 })).toEqual(command);
+    expect(pendingPresentationCommand(commandState, { ...device, stateVersion: 4, lastAppliedVersion: 4 })).toBeUndefined();
+  });
   it('resumes from the fragment with throwing storage, no fetch/WebSocket, and cookie-less bearer auth', async () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage blocked'); });
     window.history.replaceState(null, '', `/display#installation=${credential.installationId}.${credential.installationSecret}`);
@@ -99,6 +105,7 @@ describe('real TV display boot', () => {
 
     expect(await screen.findByText(/Control remoto activo/)).toBeInTheDocument();
     expect(screen.getByText('Booted TV')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /sonido|silenciar|activar sonidos/i })).not.toBeInTheDocument();
     expect(globalThis.fetch).toBeUndefined();
     expect(globalThis.WebSocket).toBeUndefined();
     await waitFor(() => expect(FakeXhr.requests).toHaveLength(3));

@@ -59,7 +59,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
 
   return (
     <div
-      className="filter-bar"
+      className={`filter-bar ${collapsed ? 'filter-bar--collapsed' : ''}`}
       style={{
         background: 'rgba(0,0,0,0.3)',
         borderBottom: '1px solid rgba(255,255,255,0.08)',
@@ -67,7 +67,6 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
         display: 'flex',
         alignItems: 'center',
         gap: 'var(--space-sm)',
-        flexWrap: 'wrap',
         flexShrink: 0,
       }}
     >
@@ -113,7 +112,12 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
       </button>
 
       {!collapsed && (
-        <>
+        <div
+          className="filter-bar__scroller"
+          role="region"
+          aria-label="Controles de filtro desplazables"
+          tabIndex={0}
+        >
           {/* Text search */}
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
             <IconSearch size={14} style={{ position: 'absolute', left: 8, color: 'rgba(255,255,255,0.3)' }} />
@@ -216,7 +220,7 @@ export function FilterBar({ metadata, filter, onChange }: FilterBarProps) {
               <IconX size={14} /> Limpiar
             </button>
           )}
-        </>
+        </div>
       )}
     </div>
   );

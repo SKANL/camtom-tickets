@@ -2,9 +2,20 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { materializeTeamConfig, resolveTeamSettings } from '@camtom/shared';
 import { Header } from '../components/Header';
 import { TeamBoardPane } from '../components/TeamBoardPane';
+import { BoardViewport } from '../components/BoardViewport';
 import { useTeamSLA } from '../hooks/useTeamSLA';
 import { DisplayRuntime, type DisplaySnapshot } from './display-runtime';
 import { createXhrDisplayTransport } from './display-transport';
+import { Button } from '../components/ui/Button';
+import { Surface } from '../components/ui/Surface';
+import { IconChefHat } from '../components/Icons';
+
+export function pendingPresentationCommand(
+  state: import('@camtom/shared').ScreenState,
+  device: import('@camtom/shared').ScreenDevice,
+) {
+  return device.lastAppliedVersion < device.stateVersion ? state.presentationCommand : undefined;
+}
 
 function PairingScreen({ runtime, snapshot }: { runtime: DisplayRuntime; snapshot: DisplaySnapshot }) {
   const [, tick] = useState(0);
@@ -21,17 +32,25 @@ function PairingScreen({ runtime, snapshot }: { runtime: DisplayRuntime; snapsho
 
   return (
     <main className="screen-pairing-shell" aria-live="polite">
-      <section className="screen-pairing-card">
-        <p className="screen-kicker">PANTALLA CAMTOM · PROTOCOLO V2</p>
+      <Surface as="section" tone="raised" className="screen-pairing-card">
+        <div className="pairing-hero-mark" aria-hidden="true">
+          <IconChefHat size={38} />
+        </div>
+        <p className="screen-kicker">ESTACIÓN DE PANTALLA · CONEXIÓN SEGURA</p>
         {snapshot.phase === 'pairing' && snapshot.pairing ? (
           <>
-            <h1>Vinculá esta pantalla una sola vez</h1>
-            <p>En tu laptop abrí <strong>/control</strong> e ingresá este código:</p>
+            <h1>Prepará esta estación una sola vez</h1>
+            <ol className="pairing-steps" aria-label="Pasos para vincular la pantalla">
+              <li className="is-active"><span>1</span><strong>Abrí /control</strong><small>Desde tu laptop</small></li>
+              <li><span>2</span><strong>Ingresá el código</strong><small>Se usa una sola vez</small></li>
+              <li><span>3</span><strong>Guardá el favorito</strong><small>La TV se reconecta sola</small></li>
+            </ol>
+            <p className="pairing-instruction">Ingresá este código en el control de pantallas:</p>
             <div className="screen-pairing-code" aria-label={`Código ${snapshot.pairing.code.split('').join(' ')}`}>
               {snapshot.pairing.code}
             </div>
-            <p>Vence en {seconds} segundos.</p>
-            <p>Después guardá como favorito la URL con <strong>#installation=…</strong>. Esa URL recupera el control al reiniciar.</p>
+            <p className="pairing-expiry"><span aria-hidden="true">◷</span> Disponible por {seconds} segundos</p>
+            <p className="pairing-note">Después guardá esta página como favorita. La dirección privada recupera el control al reiniciar la TV.</p>
             {snapshot.message && <p role="alert">{snapshot.message}</p>}
           </>
         ) : snapshot.phase === 'incompatible' ? (
@@ -44,7 +63,7 @@ function PairingScreen({ runtime, snapshot }: { runtime: DisplayRuntime; snapsho
           <>
             <h1>{snapshot.phase === 'connecting' || snapshot.phase === 'initializing' ? 'Conectando…' : 'La pantalla necesita atención'}</h1>
             <p role={snapshot.message ? 'alert' : undefined}>{snapshot.message ?? 'Preparando la conexión segura.'}</p>
-            {canRetry && <button type="button" onClick={() => runtime.restartPairing()}>Generar nueva vinculación</button>}
+            {canRetry && <Button variant="primary" size="lg" type="button" onClick={() => runtime.restartPairing()}>Generar nueva vinculación</Button>}
           </>
         )}
         <details>
@@ -60,7 +79,7 @@ function PairingScreen({ runtime, snapshot }: { runtime: DisplayRuntime; snapsho
             <dt>Almacenamiento</dt><dd>{snapshot.capabilities.localStorage ? 'disponible (opcional)' : 'no disponible (no requerido)'}</dd>
           </dl>
         </details>
-      </section>
+      </Surface>
     </main>
   );
 }
@@ -103,13 +122,17 @@ export function TvDisplayApp({ runtime: suppliedRuntime }: { runtime?: DisplayRu
     ? new Date(snapshot.lastUpdated).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     : 'sin datos';
   const offline = snapshot.phase === 'offline';
+  const presentationCommand = pendingPresentationCommand(state, snapshot.device);
+  const paneSummary = (teamId: string, view: 'board' | 'report') => {
+    const count = snapshot.issues.filter((issue) => issue.team?.id === teamId).length;
+    return `${view === 'report' ? 'Reporte' : 'Tablero'} · ${count} ticket${count === 1 ? '' : 's'}`;
+  };
 
   return (
     <div className="app-shell tv-display-shell" key={state.reloadNonce ?? 'display-v2'}>
       <Header
         title={title}
         isMuted={state.muted !== false}
-        onToggleMute={() => {}}
         isFriday={new Date().getDay() === 5}
         config={headerConfig}
         activeTeam={state.layout === 'single' ? leftTeam : undefined}
@@ -124,8 +147,13 @@ export function TvDisplayApp({ runtime: suppliedRuntime }: { runtime?: DisplayRu
           <span>{offline ? 'Reconectando' : 'Control remoto activo'} · Última actualización: {updated}</span>
           <span>v{snapshot.device.lastAppliedVersion}/{snapshot.device.stateVersion} · Protocolo {snapshot.device.protocolVersion ?? 2} · {snapshot.issues.length} tickets</span>
         </div>
-        <div className={`board-viewport ${state.layout}`}>
-          <TeamBoardPane
+        <BoardViewport
+          layout={state.layout}
+          leftLabel={leftTeam?.name ?? 'Panel izquierdo'}
+          rightLabel={teams.find((team) => team.id === state.panes.right?.teamId)?.name}
+          leftSummary={paneSummary(state.panes.left.teamId, state.panes.left.view)}
+          rightSummary={paneSummary(state.panes.right.teamId, state.panes.right.view)}
+          left={<TeamBoardPane
             paneId="left"
             pane={state.panes.left}
             teams={teams}
@@ -137,9 +165,12 @@ export function TvDisplayApp({ runtime: suppliedRuntime }: { runtime?: DisplayRu
             loading={false}
             error={snapshot.message ?? null}
             readOnly
+            compactPresentation={state.layout === 'split-vertical'}
+            rotation={state.rotation ?? { enabled: true, intervalSeconds: 12, paused: false }}
+            presentationCommand={presentationCommand}
             onChange={() => {}}
-          />
-          {state.layout === 'split-vertical' && state.panes.right && (
+          />}
+          right={state.layout === 'split-vertical' && state.panes.right ? (
             <TeamBoardPane
               paneId="right"
               pane={state.panes.right}
@@ -152,10 +183,13 @@ export function TvDisplayApp({ runtime: suppliedRuntime }: { runtime?: DisplayRu
               loading={false}
               error={snapshot.message ?? null}
               readOnly
+              compactPresentation
+              rotation={state.rotation ?? { enabled: true, intervalSeconds: 12, paused: false }}
+              presentationCommand={presentationCommand}
               onChange={() => {}}
             />
-          )}
-        </div>
+          ) : undefined}
+        />
       </main>
     </div>
   );

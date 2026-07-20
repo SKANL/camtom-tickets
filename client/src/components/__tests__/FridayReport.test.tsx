@@ -52,6 +52,9 @@ describe('FridayReport', () => {
     render(<FridayReport issues={issues} playSuccess={vi.fn()} config={null} />);
     expect(screen.getByText('Rendimiento del equipo')).toBeDefined();
     expect(screen.getByText('Alice')).toBeDefined();
+    expect(screen.getByRole('table', { name: 'Rendimiento del equipo' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Chef' })).toBeInTheDocument();
+    expect(screen.getByRole('rowheader', { name: 'Alice' })).toBeInTheDocument();
   });
 
   it('shows priority breakdown section', () => {
