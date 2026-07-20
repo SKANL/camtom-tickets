@@ -63,7 +63,7 @@ export function TeamsTab({
           </FieldRow>
         )}
         <p style={{ color: 'rgba(255,255,255,.5)', fontSize: 'var(--text-xs)' }}>
-          Esta selección se guarda sólo en este navegador. El control remoto se agregará en una fase posterior.
+          Esta selección pertenece sólo a este navegador. Para cambiar una TV vinculada usá <strong>/control</strong>; sus equipos y layout se guardan de forma independiente.
         </p>
       </Section>
 

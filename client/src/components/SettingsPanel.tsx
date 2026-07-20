@@ -10,6 +10,7 @@ import {
   TeamDashboardSettings,
   ZoneLabels,
   createConfigV2,
+  canonicalizeConfigV2,
   validateConfigV2,
 } from '@camtom/shared';
 import { Badge } from './ui/Badge';
@@ -21,16 +22,19 @@ import { DisplayTab } from './settings/DisplayTab';
 import { SlaTab } from './settings/SlaTab';
 import { LabelsTab } from './settings/LabelsTab';
 import { SoundsTab } from './settings/SoundsTab';
-import { ConfigAdminError, readAdminToken, storeAdminToken, updateServerConfig } from '../lib/config-admin';
+import { ConfigAdminError, readAdminToken, updateServerConfig } from '../lib/config-admin';
+import { ConfirmDialog } from './ui/ConfirmDialog';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 
 type TabId = 'general' | 'teams' | 'display' | 'sla' | 'labels' | 'sounds';
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'general', label: 'General' },
-  { id: 'teams', label: 'Teams y pantalla' },
-  { id: 'display', label: 'Visual' },
-  { id: 'sla', label: 'SLA' },
-  { id: 'labels', label: 'Etiquetas' },
-  { id: 'sounds', label: 'Sonidos' },
+type SettingsScope = 'Global' | 'Team' | 'Este navegador' | 'Mixto';
+const TABS: { id: TabId; label: string; scope: SettingsScope }[] = [
+  { id: 'general', label: 'General', scope: 'Mixto' },
+  { id: 'teams', label: 'Pantalla', scope: 'Este navegador' },
+  { id: 'display', label: 'Apariencia', scope: 'Team' },
+  { id: 'sla', label: 'SLA', scope: 'Team' },
+  { id: 'labels', label: 'Etiquetas', scope: 'Team' },
+  { id: 'sounds', label: 'Audio', scope: 'Este navegador' },
 ];
 
 interface SettingsPanelProps {
@@ -46,7 +50,7 @@ export function buildConfigV2SaveBody(
   configV2: ConfigV2,
   expectedVersion: string,
 ): { configV2: ConfigV2; expectedVersion: string } {
-  return { configV2, expectedVersion };
+  return { configV2: canonicalizeConfigV2(configV2), expectedVersion };
 }
 
 export function applyConfigV2Preview(config: ConfigResponse, configV2: ConfigV2): ConfigResponse {
@@ -89,7 +93,9 @@ export function SettingsPanel({
   onClose,
 }: SettingsPanelProps) {
   const baseConfig = useRef(config).current;
-  const baseV2 = useRef(config.configV2 ?? createConfigV2(config)).current;
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({ general: null, teams: null, display: null, sla: null, labels: null, sounds: null });
+  const baseV2 = useRef(canonicalizeConfigV2(config.configV2 ?? createConfigV2(config))).current;
   const savedConfigRef = useRef<ConfigResponse | null>(null);
   const [previewBase, setPreviewBase] = useState<ConfigResponse>(() => baseConfig);
   const teams = previewBase.dashboard.teams ?? [];
@@ -109,13 +115,32 @@ export function SettingsPanel({
   const [editingSla, setEditingSla] = useState<SLAConfig | null>(null);
   const [slaValidation, setSlaValidation] = useState<string | null>(null);
   const [previewVolume, setPreviewVolume] = useState(0.5);
+  const [localScreenState, setLocalScreenState] = useState(screenState);
+  const [showAdminPrompt, setShowAdminPrompt] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   const settings = draft.teams[selectedTeamId] ?? baseV2.teams[selectedTeamId];
   const selectedName = teams.find((team) => team.id === selectedTeamId)?.name ?? 'Team';
-  const handleClose = useCallback(() => {
+  const dirty = useMemo(
+    () => !configValuesEqual(draft, mergeBase),
+    [draft, mergeBase],
+  );
+  const validationErrors = useMemo(
+    () => validateConfigV2(draft, teams.map((team) => team.id)),
+    [draft, teams],
+  );
+  const closeImmediately = useCallback(() => {
     onApplyConfig(savedConfigRef.current ?? baseConfig);
     onClose();
   }, [baseConfig, onApplyConfig, onClose]);
+  const discardAndClose = useCallback(() => {
+    closeImmediately();
+  }, [closeImmediately]);
+  const handleClose = useCallback(() => {
+    if (dirty) setDiscardOpen(true);
+    else closeImmediately();
+  }, [closeImmediately, dirty]);
+  useDialogFocus(dialogRef, handleClose, !discardOpen);
 
   useEffect(() => {
     onApplyConfig(applyConfigV2Preview(previewBase, draft));
@@ -131,12 +156,6 @@ export function SettingsPanel({
       setSelectedTeamId(teams[0].id);
     }
   }, [selectedTeamId, teams]);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') handleClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [handleClose]);
 
   const updateTeam = useCallback((patch: Partial<TeamDashboardSettings>) => {
     setDraft((current) => ({
@@ -193,7 +212,8 @@ export function SettingsPanel({
       return;
     }
     if (!adminToken.trim()) {
-      setSaveStatus('Error: Ingresá la clave de administración');
+      setShowAdminPrompt(true);
+      setSaveStatus('Ingresá la clave administrativa para confirmar el guardado.');
       return;
     }
     const errors = validateConfigV2(draft, teams.map((team) => team.id));
@@ -205,7 +225,7 @@ export function SettingsPanel({
     setSaveStatus(null);
     try {
       const saved = await updateServerConfig(buildConfigV2SaveBody(draft, observedVersion), adminToken);
-      const savedV2 = saved.configV2 ?? createConfigV2(saved);
+      const savedV2 = canonicalizeConfigV2(saved.configV2 ?? createConfigV2(saved));
       setDraft(savedV2);
       setMergeBase(savedV2);
       setMergeConflicts([]);
@@ -216,6 +236,7 @@ export function SettingsPanel({
       onSavedConfig(saved);
       onApplyConfig(saved);
       setSaveStatus('saved');
+      setShowAdminPrompt(false);
     } catch (error) {
       if (error instanceof ConfigAdminError && error.status === 401) setAdminToken('');
       if (error instanceof ConfigAdminError && error.status === 409 && error.currentConfig) {
@@ -225,6 +246,28 @@ export function SettingsPanel({
     } finally {
       setSaving(false);
     }
+  };
+
+  const selectTab = (id: TabId, focus = false) => {
+    setActiveTab(id);
+    if (focus) tabRefs.current[id]?.focus();
+  };
+  const onTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, id: TabId) => {
+    const index = TABS.findIndex((tab) => tab.id === id);
+    let next = index;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = (index + 1) % TABS.length;
+    else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') next = (index - 1 + TABS.length) % TABS.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = TABS.length - 1;
+    else return;
+    event.preventDefault();
+    selectTab(TABS[next].id, true);
+  };
+
+  const activeScope = TABS.find((tab) => tab.id === activeTab)?.scope ?? 'Team';
+  const handleScreenStateChange = (state: ScreenState) => {
+    setLocalScreenState(state);
+    onScreenStateChange(state);
   };
 
   const handleResolveConflict = (conflict: ConfigMergeConflict, choice: 'local' | 'remote') => {
@@ -241,28 +284,55 @@ export function SettingsPanel({
 
   return (
     <div className="settings-backdrop" onClick={(event) => { if (event.target === event.currentTarget) handleClose(); }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="settings-title" className="settings-dialog">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="settings-title" className="settings-dialog" tabIndex={-1}>
         <div className="settings-header">
-          <h2 id="settings-title"><IconSettings size={22} /> Configuración</h2>
-          <button autoFocus aria-label="Cerrar configuración" onClick={handleClose}><IconX size={18} /></button>
+          <div><p className="screen-kicker">MISE EN PLACE</p><h2 id="settings-title"><IconSettings size={22} /> Configuración</h2></div>
+          <Badge>{dirty ? 'Borrador sin guardar' : 'Todo guardado'}</Badge>
+          <button aria-label="Cerrar configuración" onClick={handleClose}><IconX size={18} /></button>
         </div>
-        <div className="settings-team-context">
-          Editando: <strong>{selectedName}</strong>. General conserva branding; las demás opciones se guardan por team.
-        </div>
-        <div role="tablist" aria-label="Secciones de configuración" className="settings-tabs">
-          {TABS.map((tab) => (
-            <button key={tab.id} role="tab" aria-selected={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>
-              {tab.label}
-            </button>
-          ))}
-        </div>
-        <div className="settings-content">
+        <div className="settings-workspace">
+          <nav role="tablist" aria-label="Secciones de configuración" aria-orientation="vertical" className="settings-tabs">
+            {TABS.map((tab) => (
+              <button
+                ref={(element) => { tabRefs.current[tab.id] = element; }}
+                id={`settings-tab-${tab.id}`}
+                key={tab.id}
+                role="tab"
+                aria-label={tab.label}
+                aria-selected={activeTab === tab.id}
+                aria-controls={`settings-panel-${tab.id}`}
+                tabIndex={activeTab === tab.id ? 0 : -1}
+                onClick={() => selectTab(tab.id)}
+                onKeyDown={(event) => onTabKeyDown(event, tab.id)}
+              >
+                <span>{tab.label}</span><small>{tab.scope}</small>
+              </button>
+            ))}
+          </nav>
+          <div id={`settings-panel-${activeTab}`} role="tabpanel" aria-labelledby={`settings-tab-${activeTab}`} className="settings-content" tabIndex={0}>
+            <div className="settings-section-heading">
+              <div><span className={`settings-scope settings-scope--${activeScope.replace(' ', '-').toLowerCase()}`}>{activeScope}</span><strong>{activeScope === 'Team' ? selectedName : activeScope}</strong></div>
+              <p>{activeScope === 'Global'
+                ? 'Se aplica a todos los equipos.'
+                : activeScope === 'Team'
+                  ? 'Sólo cambia la experiencia de este team.'
+                  : activeScope === 'Mixto'
+                    ? `El título es Global; reporte e integrantes pertenecen a ${selectedName}.`
+                    : 'Permanece en este navegador y no modifica otras pantallas.'}</p>
+            </div>
+            {validationErrors.length > 0 && (
+              <div className="settings-validation" role="alert">
+                <strong>Hay {validationErrors.length} ajuste(s) por revisar</strong>
+                <ul>{validationErrors.slice(0, 4).map((error) => <li key={error}>{error}</li>)}</ul>
+              </div>
+            )}
           {activeTab === 'general' && (
             <GeneralTab
               title={draft.global.title}
               slaWindowHours={settings.report.slaWindowHours}
               reportEnabled={settings.report.enabled}
               teamMembers={settings.teamMembers}
+              selectedTeamName={selectedName}
               newMemberName={newMemberName}
               setNewMemberName={setNewMemberName}
               addTeamMember={addTeamMember}
@@ -277,10 +347,10 @@ export function SettingsPanel({
               teams={teams}
               selectedTeamId={selectedTeamId}
               settings={settings}
-              screenState={screenState}
+              screenState={localScreenState}
               onSelectTeam={setSelectedTeamId}
               onTeamChange={updateTeam}
-              onScreenChange={onScreenStateChange}
+              onScreenChange={handleScreenStateChange}
             />
           )}
           {activeTab === 'display' && (
@@ -288,7 +358,10 @@ export function SettingsPanel({
               displayOptions={settings.displayOptions}
               displayOrder={settings.displayOrder}
               onChange={(key, value) => updateTeam({ displayOptions: { ...settings.displayOptions, [key]: value } as DisplayOptions })}
-              onDisplayOrderChange={(displayOrder) => updateTeam({ displayOrder })}
+              onDisplayOrderChange={(displayOrder) => updateTeam({
+                displayOrder,
+                displayOptions: { ...settings.displayOptions, columnOrder: displayOrder },
+              })}
             />
           )}
           {activeTab === 'sla' && (
@@ -331,17 +404,24 @@ export function SettingsPanel({
               handlePreviewSound={(name) => { try { (window as any).cuelume?.play(name); } catch {} }}
             />
           )}
+          </div>
+          <aside className="settings-preview" aria-label="Vista previa">
+            <div className="settings-preview__screen">
+              <div className="settings-preview__top"><span /><span /><span /></div>
+              <strong>{draft.global.title}</strong>
+              <div className={`settings-preview__layout ${localScreenState.layout}`}>
+                <span>{teams.find((team) => team.id === localScreenState.panes.left.teamId)?.name ?? 'Panel izquierdo'}</span>
+                {localScreenState.layout === 'split-vertical' && <span>{teams.find((team) => team.id === localScreenState.panes.right.teamId)?.name ?? 'Panel derecho'}</span>}
+              </div>
+            </div>
+            <p>La pantalla local se guarda automáticamente; la configuración Global/Team permanece en borrador.</p>
+          </aside>
         </div>
-        <div className="settings-admin">
-          <label htmlFor="config-admin-token">Clave de administración</label>
-          <input
-            id="config-admin-token"
-            type="password"
-            autoComplete="current-password"
-            value={adminToken}
-            onChange={(event) => { setAdminToken(event.target.value); storeAdminToken(event.target.value); }}
-          />
-        </div>
+        {showAdminPrompt && <div className="settings-admin" role="group" aria-label="Autenticación administrativa">
+          <label id="settings-admin-label" htmlFor="config-admin-token">Confirmá con la clave administrativa</label>
+          <input id="config-admin-token" type="password" autoComplete="current-password" value={adminToken} onChange={(event) => setAdminToken(event.target.value)} autoFocus />
+          <small>La clave se solicita únicamente al guardar y no forma parte del borrador.</small>
+        </div>}
         {mergeConflicts.length > 0 && (
           <div className="settings-conflicts" role="alert" aria-label="Conflictos de configuración">
             <strong>Resolvé {mergeConflicts.length} conflicto(s) antes de guardar:</strong>
@@ -360,7 +440,7 @@ export function SettingsPanel({
           {conflictConfig && (
             <>
               <Button variant="secondary" onClick={() => {
-                const latest = conflictConfig.configV2 ?? createConfigV2(conflictConfig);
+                const latest = canonicalizeConfigV2(conflictConfig.configV2 ?? createConfigV2(conflictConfig));
                 setDraft(latest);
                 setMergeBase(latest);
                 setMergeConflicts([]);
@@ -372,7 +452,7 @@ export function SettingsPanel({
                 setSaveStatus('Se cargó la última versión; tu borrador fue descartado.');
               }}>Cargar última versión</Button>
               <Button variant="secondary" onClick={() => {
-                const latest = conflictConfig.configV2 ?? createConfigV2(conflictConfig);
+                const latest = canonicalizeConfigV2(conflictConfig.configV2 ?? createConfigV2(conflictConfig));
                 const result = threeWayMergeConfigV2(mergeBase, draft, latest);
                 setDraft(result.merged);
                 setMergeBase(latest);
@@ -389,11 +469,20 @@ export function SettingsPanel({
             </>
           )}
           <Button variant="secondary" onClick={handleClose}>Cerrar</Button>
-          <Button variant="primary" onClick={handleSaveToServer} disabled={saving || mergeConflicts.length > 0}>
+          <Button variant="primary" onClick={handleSaveToServer} disabled={saving || mergeConflicts.length > 0 || validationErrors.length > 0}>
             {saving ? 'Guardando…' : 'Guardar en servidor'}
           </Button>
         </div>
       </div>
+      <ConfirmDialog
+        open={discardOpen}
+        title="¿Dejar la cocina como estaba?"
+        description="Hay cambios Global/Team que todavía no fueron guardados. Si salís ahora, se descartarán."
+        confirmLabel="Descartar cambios"
+        destructive
+        onCancel={() => setDiscardOpen(false)}
+        onConfirm={discardAndClose}
+      />
     </div>
   );
 }

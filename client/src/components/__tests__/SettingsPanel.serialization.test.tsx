@@ -77,7 +77,41 @@ describe('settings v2 serialization', () => {
     fireEvent.change(screen.getAllByRole('combobox')[3], { target: { value: 'ticket-label' } });
     expect(onApplyConfig.mock.calls.at(-1)?.[0].configV2.teams.a.filter).toBe('ticket-label');
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar configuración' }));
+    const dialog = screen.getByRole('alertdialog', { name: '¿Dejar la cocina como estaba?' });
+    fireEvent.click(Array.from(dialog.querySelectorAll('button')).find((button) => button.textContent === 'Descartar cambios')!);
     expect(onApplyConfig.mock.calls.at(-1)?.[0]).toBe(config);
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('synchronizes displayOrder with the legacy columnOrder alias on save', () => {
+    const config = configFixture();
+    const v2 = createConfigV2(config);
+    v2.teams.a.displayOrder = [4, 3, 2, 1, 0];
+    v2.teams.a.displayOptions.columnOrder = [1, 2, 3, 4, 0];
+    const body = buildConfigV2SaveBody(v2, config.version);
+    expect(body.configV2.teams.a.displayOrder).toEqual([4, 3, 2, 1, 0]);
+    expect(body.configV2.teams.a.displayOptions.columnOrder).toEqual([4, 3, 2, 1, 0]);
+  });
+
+  it('keeps auto-persisted browser-local screen state when settings closes', () => {
+    const config = configFixture();
+    config.configV2 = createConfigV2(config);
+    const initialScreenState = createDefaultScreenState(['a', 'b'], 'a');
+    const onScreenStateChange = vi.fn();
+    const onClose = vi.fn();
+    render(<SettingsPanel
+      config={config}
+      screenState={initialScreenState}
+      onApplyConfig={vi.fn()}
+      onSavedConfig={vi.fn()}
+      onScreenStateChange={onScreenStateChange}
+      onClose={onClose}
+    />);
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'split-vertical' } });
+    expect(onScreenStateChange).toHaveBeenCalledWith(expect.objectContaining({ layout: 'split-vertical' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar configuración' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(onScreenStateChange.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({ layout: 'split-vertical' }));
     expect(onClose).toHaveBeenCalledOnce();
   });
 });
