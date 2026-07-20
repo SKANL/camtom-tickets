@@ -32,6 +32,9 @@ export {
   resolveTeamSettings,
   validateConfigV2,
   validateScreenState,
+  withoutPresentationCommand,
+  canonicalizeTeamDisplayOrder,
+  canonicalizeConfigV2,
   EMPTY_FILTER,
 } from './config-v2';
 export {

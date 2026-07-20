@@ -27,6 +27,25 @@ describe('screen and pane state', () => {
     localStorage.setItem(SCREEN_STATE_STORAGE_KEY, JSON.stringify(split));
     expect(loadScreenState(['a', 'b']).layout).toBe('split-vertical');
     expect(loadScreenState(['a', 'b']).panes.right?.teamId).toBe('b');
+    expect(loadScreenState(['a', 'b']).rotation).toEqual({ enabled: true, intervalSeconds: 12, paused: false });
+  });
+
+  it('rejects unsafe presentation rotation intervals and preserves a valid rotation', () => {
+    const state = createDefaultScreenState(['a'], 'a');
+    state.rotation = { enabled: true, intervalSeconds: 3, paused: false };
+    localStorage.setItem(SCREEN_STATE_STORAGE_KEY, JSON.stringify(state));
+    expect(loadScreenState(['a']).rotation?.intervalSeconds).toBe(12);
+
+    state.rotation.intervalSeconds = 20;
+    localStorage.setItem(SCREEN_STATE_STORAGE_KEY, JSON.stringify(state));
+    expect(loadScreenState(['a']).rotation).toEqual({ enabled: true, intervalSeconds: 20, paused: false });
+  });
+
+  it('never restores a transient presentation command from browser storage', () => {
+    const state = createDefaultScreenState(['a'], 'a');
+    state.presentationCommand = { id: 'already-handled', type: 'next' };
+    localStorage.setItem(SCREEN_STATE_STORAGE_KEY, JSON.stringify(state));
+    expect(loadScreenState(['a']).presentationCommand).toBeUndefined();
   });
 
   it('filters the two panes independently from one ticket snapshot', () => {
