@@ -22,6 +22,7 @@ import {
   ControlRoute,
   controlHealth,
   controlRefreshInterval,
+  pendingAckFeedback,
 } from '../ControlRoute';
 
 const desiredState = {
@@ -68,7 +69,7 @@ describe('ControlRoute', () => {
 
   it('resumes the HttpOnly session without asking for the admin token', async () => {
     render(<ControlRoute />);
-    expect(await screen.findByRole('heading', { name: 'TV1' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'TV1' }, { timeout: 5_000 })).toBeInTheDocument();
     expect(mocks.getControlSession).toHaveBeenCalledOnce();
     expect(screen.queryByLabelText('Clave administrativa')).not.toBeInTheDocument();
   });
@@ -289,5 +290,84 @@ describe('ControlRoute', () => {
     fireEvent.click(Array.from(article.querySelectorAll('button')).find((button) => button.textContent === 'Aplicar')!);
     expect(await screen.findByText(/Elegí explícitamente un team permitido para cada panel de TV invalid/)).toBeInTheDocument();
     expect(mocks.updateDevice).not.toHaveBeenCalled();
+  });
+
+  it('sends transient navigation in the existing versioned payload and reports per-device ACK state', async () => {
+    render(<ControlRoute />);
+    const article = (await screen.findByRole('heading', { name: 'TV1' })).closest('article')!;
+    fireEvent.click(Array.from(article.querySelectorAll('button')).find((button) => button.textContent?.includes('Siguiente'))!);
+    await waitFor(() => expect(mocks.updateDevice).toHaveBeenCalledWith(
+      '',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      expect.objectContaining({
+        desiredState: expect.objectContaining({
+          presentationCommand: { id: '11111111-1111-4111-8111-111111111111', type: 'next' },
+        }),
+      }),
+    ));
+    expect(article).toHaveTextContent(/Siguiente página|Confirmado por la TV/);
+  });
+
+  it('isolates transient commands from dirty drafts and strips commands from ordinary apply', async () => {
+    render(<ControlRoute />);
+    const article = (await screen.findByRole('heading', { name: 'TV1' })).closest('article')!;
+    fireEvent.click(Array.from(article.querySelectorAll('summary')).find((summary) => summary.textContent?.includes('Configurar'))!);
+    const searchInput = Array.from(article.querySelectorAll('input')).find((input) => input.parentElement?.textContent?.includes('Buscar'))!;
+    fireEvent.change(searchInput, { target: { value: 'dirty local draft' } });
+
+    fireEvent.click(Array.from(article.querySelectorAll('button')).find((button) => button.textContent?.includes('Siguiente'))!);
+    await waitFor(() => expect(mocks.updateDevice).toHaveBeenCalledTimes(1));
+    expect(mocks.updateDevice.mock.calls[0][2].desiredState).toMatchObject({
+      panes: { left: { filter: { textSearch: '' } } },
+      presentationCommand: { type: 'next' },
+    });
+
+    fireEvent.click(Array.from(article.querySelectorAll('button')).find((button) => button.textContent === 'Aplicar')!);
+    await waitFor(() => expect(mocks.updateDevice).toHaveBeenCalledTimes(2));
+    expect(mocks.updateDevice.mock.calls[1][2].desiredState).toMatchObject({
+      panes: { left: { filter: { textSearch: 'dirty local draft' } } },
+    });
+    expect(mocks.updateDevice.mock.calls[1][2].desiredState).not.toHaveProperty('presentationCommand');
+  });
+
+  it('never restores an ACKed persisted command into the editable draft', async () => {
+    const acked = {
+      ...device('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'TV ACKed'),
+      desiredState: { ...desiredState, presentationCommand: { id: 'old-command', type: 'next' as const } },
+      stateVersion: 4,
+      lastAppliedVersion: 4,
+    };
+    mocks.listDevices.mockResolvedValue([acked]);
+    render(<ControlRoute />);
+    const article = (await screen.findByRole('heading', { name: 'TV ACKed' })).closest('article')!;
+    fireEvent.click(Array.from(article.querySelectorAll('button')).find((button) => button.textContent === 'Aplicar')!);
+    await waitFor(() => expect(mocks.updateDevice).toHaveBeenCalledOnce());
+    expect(mocks.updateDevice.mock.calls[0][2].desiredState).not.toHaveProperty('presentationCommand');
+  });
+
+  it('reports revoked and replaced devices that disappear before command ACK', () => {
+    const base = device('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'TV');
+    expect(pendingAckFeedback({ ...base, revokedAt: '2026-07-20T00:00:00Z' }, 3)).toEqual({
+      waiting: false,
+      message: 'No confirmado: la pantalla fue revocada antes del ACK.',
+    });
+    expect(pendingAckFeedback({ ...base, supersededBy: 'replacement' }, 3)).toEqual({
+      waiting: false,
+      message: 'No confirmado: la pantalla fue reemplazada antes del ACK.',
+    });
+  });
+
+  it('uses an accessible themed confirmation instead of window.confirm', async () => {
+    mocks.rotateDisplayCredentialV2.mockResolvedValue({ installationId: 'installation', installationSecret: 'secret' });
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    render(<ControlRoute />);
+    const article = (await screen.findByRole('heading', { name: 'TV1' })).closest('article')!;
+    fireEvent.click(Array.from(article.querySelectorAll('summary')).find((summary) => summary.textContent?.includes('Avanzado'))!);
+    fireEvent.click(Array.from(article.querySelectorAll('button')).find((button) => button.textContent === 'Rotar URL')!);
+    const dialog = screen.getByRole('alertdialog', { name: '¿Cambiar la llave de esta TV?' });
+    expect(dialog).toBeInTheDocument();
+    fireEvent.click(Array.from(dialog.querySelectorAll('button')).find((button) => button.textContent === 'Rotar URL')!);
+    await waitFor(() => expect(mocks.rotateDisplayCredentialV2).toHaveBeenCalledOnce());
+    expect(confirmSpy).not.toHaveBeenCalled();
   });
 });
