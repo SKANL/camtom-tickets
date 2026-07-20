@@ -11,6 +11,9 @@
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
+    { "source": "/display", "destination": "/display/index.html" },
+    { "source": "/display/", "destination": "/display/index.html" },
+    { "source": "/display-legacy-auth", "destination": "/index.html" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }

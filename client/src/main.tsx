@@ -12,7 +12,7 @@ if (!rootElement) {
 const path = window.location.pathname.replace(/\/+$/, '') || '/';
 const route = path === '/control'
   ? <ControlRoute />
-  : path === '/display'
+  : path === '/display-legacy-auth'
     ? <DisplayRoute />
     : <DisplayRoute legacyRoot />;
 
