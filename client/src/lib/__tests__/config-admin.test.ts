@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  CONFIG_ADMIN_SESSION_KEY,
   ConfigAdminError,
   readAdminToken,
   storeAdminToken,
@@ -12,9 +11,10 @@ describe('config admin client', () => {
     localStorage.clear();
     sessionStorage.clear();
     vi.restoreAllMocks();
+    storeAdminToken('');
   });
 
-  it('keeps the token only in sessionStorage and sends the bearer header', async () => {
+  it('keeps the token only in module memory and sends the bearer header', async () => {
     storeAdminToken('secret');
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
@@ -23,9 +23,10 @@ describe('config admin client', () => {
 
     await updateServerConfig({ dashboard: { title: 'Nuevo' } }, readAdminToken());
 
-    expect(sessionStorage.getItem(CONFIG_ADMIN_SESSION_KEY)).toBe('secret');
-    expect(localStorage.getItem(CONFIG_ADMIN_SESSION_KEY)).toBeNull();
+    expect(sessionStorage.length).toBe(0);
+    expect(localStorage.length).toBe(0);
     expect(fetchSpy).toHaveBeenCalledWith('/api/config', expect.objectContaining({
+      credentials: 'same-origin',
       headers: expect.objectContaining({ Authorization: 'Bearer secret' }),
     }));
   });
