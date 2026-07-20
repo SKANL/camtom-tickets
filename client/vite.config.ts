@@ -1,10 +1,17 @@
 /// <reference types="vitest" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import legacy from '@vitejs/plugin-legacy';
 import path from 'path';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    legacy({
+      targets: ['Chrome >= 49', 'Safari >= 10', 'Firefox >= 31', 'Edge >= 15', 'Samsung >= 5', 'not IE 11'],
+      renderLegacyChunks: true,
+    }),
+  ],
   resolve: {
     alias: {
       '@camtom/shared': path.resolve(__dirname, '../shared/src'),
@@ -21,6 +28,14 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    manifest: true,
+    modulePreload: { polyfill: false },
+    rollupOptions: {
+      input: {
+        app: path.resolve(__dirname, 'index.html'),
+        display: path.resolve(__dirname, 'display/index.html'),
+      },
+    },
   },
   test: {
     globals: true,
