@@ -4,6 +4,10 @@ import { describe, expect, it } from 'vitest';
 
 describe('display protocol v2 migration', () => {
   const sql = readFileSync(resolve(__dirname, '../../../supabase/migrations/0014_display_protocol_v2.sql'), 'utf8');
+  const pairingFixSql = readFileSync(
+    resolve(__dirname, '../../../supabase/migrations/0015_fix_create_screen_pairing_v2_accepted_ambiguity.sql'),
+    'utf8',
+  );
 
   it('keeps v1 while adding nullable Auth identity and hashed v2 credentials', () => {
     expect(sql).toContain('alter column auth_user_id drop not null');
@@ -84,5 +88,41 @@ describe('display protocol v2 migration', () => {
     const revoke = sql.slice(revokeAt, sql.indexOf('create or replace function public.rotate_screen_device_credential_v2'));
     expect(revoke).toMatch(/update public\.screen_devices[\s\S]*revoked_at = now_at/);
     expect(revoke).toMatch(/update public\.screen_device_credentials[\s\S]*device_id = p_device_id[\s\S]*revoked_at is null/);
+  });
+
+  it('replaces the pairing RPC without ambiguous accepted references', () => {
+    expect(pairingFixSql).toMatch(/create or replace function public\.create_screen_pairing_v2\(\s*p_request_id uuid,\s*p_installation_id uuid,\s*p_poll_secret_hash text,\s*p_code_hash text,\s*p_expires_at timestamptz,\s*p_ip_hash text,\s*p_global_hash text\s*\)/);
+    expect(pairingFixSql).toContain('security definer');
+    expect(pairingFixSql).toContain('set search_path = pg_catalog');
+    expect(pairingFixSql).toContain("set statement_timeout = '3s'");
+    expect(pairingFixSql).toContain("set lock_timeout = '1s'");
+    expect(pairingFixSql).toContain('is_accepted boolean := false');
+    expect(pairingFixSql).toContain('is_accepted := global_count < 100');
+    expect(pairingFixSql).toContain('if not is_accepted then');
+    expect(pairingFixSql).not.toMatch(/\baccepted boolean\b|\bif not accepted\b/);
+    expect(pairingFixSql).toContain("attempt.attempted_at < clock_timestamp() - interval '24 hours'");
+    expect(pairingFixSql).toContain("attempt.attempted_at >= clock_timestamp() - interval '15 minutes'");
+    expect(pairingFixSql).toContain('pending_count < 100');
+    expect(pairingFixSql).toContain('ip_count < 5');
+    expect(pairingFixSql).toContain("values ('start', 'global', p_global_hash, true)");
+    expect(pairingFixSql).toContain("values ('start', 'ip', p_ip_hash, true)");
+    expect(pairingFixSql).toMatch(/pairing\.start_request_id = p_request_id[\s\S]*?'status', 'replay'/);
+
+    const predicateLines = pairingFixSql
+      .split('\n')
+      .filter((line) => /^\s*(where|and)\b/i.test(line))
+      .join('\n');
+    for (const column of [
+      'protocol_version', 'start_request_id', 'claimed_at', 'expires_at',
+      'attempted_at', 'action', 'bucket_type', 'actor_hash', 'accepted',
+    ]) {
+      expect(predicateLines, `${column} must be qualified in every predicate`)
+        .not.toMatch(new RegExp(`(?<!\\.)\\b${column}\\b`, 'i'));
+    }
+
+    expect(pairingFixSql).toContain('attempt.accepted is true');
+    expect(pairingFixSql).toContain('pairing.protocol_version = 2');
+    expect(pairingFixSql).toMatch(/revoke all on function public\.create_screen_pairing_v2\([\s\S]*?from public, anon, authenticated/);
+    expect(pairingFixSql).toMatch(/grant execute on function public\.create_screen_pairing_v2\([\s\S]*?to service_role/);
   });
 });
