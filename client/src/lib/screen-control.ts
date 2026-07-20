@@ -3,6 +3,8 @@ import type {
   ScreenControlFeatures,
   ScreenDevice,
   ScreenState,
+  ClaimDisplayPairingV2Request,
+  RotateDisplayCredentialResponse,
 } from '@camtom/shared';
 
 export class ScreenControlError extends Error {
@@ -23,14 +25,30 @@ export function createRequestId(): string {
 }
 
 async function jsonRequest<T>(url: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(url, init);
+  const response = await fetch(url, { credentials: 'same-origin', ...init });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new ScreenControlError(body.error || `HTTP ${response.status}`, response.status);
   return body as T;
 }
 
-function adminHeaders(token: string): HeadersInit {
-  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token.trim()}` };
+function adminHeaders(token?: string): HeadersInit {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token?.trim()) headers.Authorization = `Bearer ${token.trim()}`;
+  return headers;
+}
+
+export function getControlSession(): Promise<{ authenticated: true }> {
+  return jsonRequest('/api/control/session');
+}
+
+export function createControlSession(token: string): Promise<{ authenticated: true; expiresAt: string }> {
+  return jsonRequest('/api/control/session', {
+    method: 'POST', headers: adminHeaders(token), body: '{}',
+  });
+}
+
+export function deleteControlSession(): Promise<{ authenticated: false }> {
+  return jsonRequest('/api/control/session', { method: 'DELETE', headers: adminHeaders(), body: '{}' });
 }
 
 export function fetchScreenFeatures(): Promise<ScreenControlFeatures> {
@@ -144,7 +162,7 @@ export function fetchDeviceConfig(accessToken: string): Promise<ConfigResponse> 
   });
 }
 
-export async function listDevices(token: string): Promise<ScreenDevice[]> {
+export async function listDevices(token?: string): Promise<ScreenDevice[]> {
   const result = await jsonRequest<{ devices: ScreenDevice[] }>('/api/screens/devices', {
     headers: adminHeaders(token),
   });
@@ -160,6 +178,30 @@ export function claimPairing(token: string, input: {
 }): Promise<ScreenDevice> {
   return jsonRequest('/api/screens/pairings/claim', {
     method: 'POST', headers: adminHeaders(token), body: JSON.stringify(input),
+  });
+}
+
+export function claimDisplayPairingV2(input: ClaimDisplayPairingV2Request): Promise<ScreenDevice> {
+  return jsonRequest('/api/control/display/pairings/claim', {
+    method: 'POST', headers: adminHeaders(), body: JSON.stringify(input),
+  });
+}
+
+export function replaceDisplayDeviceV2(deviceId: string, input: ClaimDisplayPairingV2Request): Promise<ScreenDevice> {
+  return jsonRequest(`/api/control/display/devices/${encodeURIComponent(deviceId)}/replace`, {
+    method: 'POST', headers: adminHeaders(), body: JSON.stringify(input),
+  });
+}
+
+export function rotateDisplayCredentialV2(deviceId: string): Promise<RotateDisplayCredentialResponse> {
+  return jsonRequest(`/api/control/display/devices/${encodeURIComponent(deviceId)}/rotate`, {
+    method: 'POST', headers: adminHeaders(), body: '{}',
+  });
+}
+
+export function revokeDisplayDeviceV2(deviceId: string): Promise<{ ok: true }> {
+  return jsonRequest(`/api/control/display/devices/${encodeURIComponent(deviceId)}/revoke`, {
+    method: 'POST', headers: adminHeaders(), body: '{}',
   });
 }
 
