@@ -5,6 +5,7 @@ import {
   SCREEN_STATE_POLL_INTERVAL_MS,
   shouldApplyScreenVersion,
   validateAllowedScreenState,
+  withoutPresentationCommand,
 } from '@camtom/shared';
 import { screenSupabase } from '../lib/supabase';
 import {
@@ -47,6 +48,15 @@ export interface RemoteScreenModel {
   transport: 'realtime' | 'polling' | 'offline';
   message: string | null;
   restartPairing: () => void;
+  acknowledgePresentationCommand: (commandId: string) => Promise<void>;
+}
+
+interface PendingPresentationAck {
+  commandId: string;
+  deviceId: string;
+  version: number;
+  epoch: number;
+  committed: boolean;
 }
 
 export function shouldAcceptDeviceUpdate(currentVersion: number, row: ScreenDeviceRow): boolean {
@@ -124,6 +134,8 @@ export function useRemoteScreen(allowLocalWithoutPairing = false): RemoteScreenM
   const terminateTransportRef = useRef<() => void>(() => {});
   const configVersionRef = useRef('');
   const configRefreshInFlightRef = useRef<Promise<void> | null>(null);
+  const pendingPresentationAckRef = useRef<PendingPresentationAck | null>(null);
+  const presentationAckInFlightRef = useRef(false);
 
   const isCurrent = useCallback((epoch: number, version?: number) => mountedRef.current
     && !revokedRef.current
@@ -136,6 +148,8 @@ export function useRemoteScreen(allowLocalWithoutPairing = false): RemoteScreenM
     operationEpochRef.current++;
     latestObservedVersionRef.current = Number.MAX_SAFE_INTEGER;
     hasScreenStateRef.current = false;
+    pendingPresentationAckRef.current = null;
+    presentationAckInFlightRef.current = false;
     const revokedDeviceId = deviceIdRef.current;
     if (revokedDeviceId) clearRemoteDeviceCaches(revokedDeviceId);
     terminateTransportRef.current();
@@ -149,6 +163,47 @@ export function useRemoteScreen(allowLocalWithoutPairing = false): RemoteScreenM
     setTransport('offline');
     setPhase('revoked');
   }, []);
+
+  const attemptPendingPresentationAck = useCallback(async (commandId: string) => {
+    const pending = pendingPresentationAckRef.current;
+    if (!pending || !pending.committed || pending.commandId !== commandId || presentationAckInFlightRef.current) return;
+    if (!isCurrent(pending.epoch, pending.version)) return;
+    presentationAckInFlightRef.current = true;
+    try {
+      const { data, error } = await screenSupabase.rpc('screen_device_ack', {
+        p_device_id: pending.deviceId,
+        p_applied_version: pending.version,
+        p_capabilities: deviceCapabilities(),
+      });
+      if (!isCurrent(pending.epoch, pending.version)) return;
+      if (error || data !== true) throw new Error(error?.message ?? 'ACK rechazado');
+      appliedVersionRef.current = pending.version;
+      pendingPresentationAckRef.current = null;
+      setDevice((current) => current && current.id === pending.deviceId
+        ? { ...current, lastAppliedVersion: Math.max(current.lastAppliedVersion, pending.version) }
+        : current);
+      setScreenState((current) => current?.presentationCommand?.id === commandId
+        ? withoutPresentationCommand(current)
+        : current);
+      setMessage(null);
+    } catch (error) {
+      if (!isCurrent(pending.epoch, pending.version)) return;
+      setMessage(error instanceof Error ? error.message : 'No se pudo confirmar el comando aplicado');
+      setTransport('polling');
+    } finally {
+      presentationAckInFlightRef.current = false;
+    }
+  }, [isCurrent]);
+
+  const acknowledgePresentationCommand = useCallback(async (commandId: string) => {
+    const pending = pendingPresentationAckRef.current;
+    if (!pending || pending.commandId !== commandId) return;
+    pending.committed = true;
+    setScreenState((current) => current?.presentationCommand?.id === commandId
+      ? withoutPresentationCommand(current)
+      : current);
+    await attemptPendingPresentationAck(commandId);
+  }, [attemptPendingPresentationAck]);
 
   const beginPairing = useCallback(async (resetRequest = false) => {
     const token = accessTokenRef.current;
@@ -201,7 +256,9 @@ export function useRemoteScreen(allowLocalWithoutPairing = false): RemoteScreenM
           setConfig(nextConfig);
         }
         if (!hasScreenStateRef.current) {
-          setScreenState(desiredState);
+          setScreenState(Number(row.last_applied_version) >= version
+            ? withoutPresentationCommand(desiredState)
+            : desiredState);
           hasScreenStateRef.current = true;
           setPairing(null);
         }
@@ -236,6 +293,15 @@ export function useRemoteScreen(allowLocalWithoutPairing = false): RemoteScreenM
       await beginPairing(false);
       return;
     }
+    if (version === latestObservedVersionRef.current
+      && pendingPresentationAckRef.current?.version === version
+      && pendingPresentationAckRef.current.commandId === row.desired_state.presentationCommand?.id
+      && Number(row.last_applied_version) < version) {
+      if (pendingPresentationAckRef.current.committed) {
+        await attemptPendingPresentationAck(pendingPresentationAckRef.current.commandId);
+      }
+      return;
+    }
     if (version === latestObservedVersionRef.current && !shouldAcceptDeviceUpdate(appliedVersionRef.current, row)) {
       await refreshEffectiveConfig(row);
       return;
@@ -259,15 +325,32 @@ export function useRemoteScreen(allowLocalWithoutPairing = false): RemoteScreenM
         throw new Error('El estado remoto no coincide con la configuración autorizada');
       }
       if (!isCurrent(epoch, version)) return;
-      appliedVersionRef.current = version;
       configVersionRef.current = nextConfig.version;
       setConfig(nextConfig);
-      setScreenState(row.desired_state);
+      const command = row.desired_state.presentationCommand;
+      const commandPending = !!command && Number(row.last_applied_version) < version;
+      setScreenState(commandPending ? row.desired_state : withoutPresentationCommand(row.desired_state));
       hasScreenStateRef.current = true;
       setPairing(null);
       setPhase('paired');
       setMessage(null);
 
+      if (commandPending && command) {
+        pendingPresentationAckRef.current = {
+          commandId: command.id,
+          deviceId: row.id,
+          version,
+          epoch,
+          committed: false,
+        };
+        return;
+      }
+
+      pendingPresentationAckRef.current = null;
+      if (Number(row.last_applied_version) >= version) {
+        appliedVersionRef.current = version;
+        return;
+      }
       if (!isCurrent(epoch, version)) return;
       const { data, error } = await screenSupabase.rpc('screen_device_ack', {
         p_device_id: row.id,
@@ -276,12 +359,13 @@ export function useRemoteScreen(allowLocalWithoutPairing = false): RemoteScreenM
       });
       if (!isCurrent(epoch, version)) return;
       if (error || data !== true) throw new Error(error?.message ?? 'ACK rechazado');
+      appliedVersionRef.current = version;
     } catch (error) {
       if (!isCurrent(epoch, version)) return;
       setMessage(error instanceof Error ? error.message : 'No se pudo aplicar el estado remoto');
       setPhase('error');
     }
-  }, [beginPairing, handleRevocation, isCurrent, refreshEffectiveConfig]);
+  }, [attemptPendingPresentationAck, beginPairing, handleRevocation, isCurrent, refreshEffectiveConfig]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -441,6 +525,8 @@ export function useRemoteScreen(allowLocalWithoutPairing = false): RemoteScreenM
       cancelled = true;
       mountedRef.current = false;
       operationEpochRef.current++;
+      pendingPresentationAckRef.current = null;
+      presentationAckInFlightRef.current = false;
       stopTransport();
       if (featureTimer) clearInterval(featureTimer);
       featureTimer = null;
@@ -458,6 +544,8 @@ export function useRemoteScreen(allowLocalWithoutPairing = false): RemoteScreenM
     revokedRef.current = false;
     deviceIdRef.current = '';
     hasScreenStateRef.current = false;
+    pendingPresentationAckRef.current = null;
+    presentationAckInFlightRef.current = false;
     setDevice(null);
     setConfig(null);
     configVersionRef.current = '';
@@ -468,5 +556,16 @@ export function useRemoteScreen(allowLocalWithoutPairing = false): RemoteScreenM
     setRestartEpoch((value) => value + 1);
   }, []);
 
-  return { phase, features, device, config, screenState, pairing, transport, message, restartPairing };
+  return {
+    phase,
+    features,
+    device,
+    config,
+    screenState,
+    pairing,
+    transport,
+    message,
+    restartPairing,
+    acknowledgePresentationCommand,
+  };
 }

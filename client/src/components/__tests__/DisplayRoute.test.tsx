@@ -5,16 +5,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   model: {} as any,
   restartPairing: vi.fn(),
+  appProps: null as any,
 }));
 
 vi.mock('../../hooks/useRemoteScreen', () => ({ useRemoteScreen: () => mocks.model }));
-vi.mock('../../App', () => ({ default: () => <div>legacy local dashboard</div> }));
+vi.mock('../../App', () => ({ default: (props: unknown) => { mocks.appProps = props; return <div>legacy local dashboard</div>; } }));
 
 import { DisplayRoute } from '../DisplayRoute';
 
 describe('DisplayRoute compatibility', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.appProps = null;
     mocks.model = {
   phase: 'local', features: { screenControlEnabled: false, requirePairing: false, captchaProvider: null, captchaSiteKey: null, configurationError: null },
       device: null, config: null, screenState: null, pairing: null,
@@ -53,5 +55,22 @@ describe('DisplayRoute compatibility', () => {
     render(<DisplayRoute />);
     expect(screen.getByRole('alert')).toHaveTextContent('Configuración inválida');
     expect(screen.queryByText('legacy local dashboard')).not.toBeInTheDocument();
+  });
+
+  it('wires v1 presentation execution back to the deferred ACK callback', () => {
+    const acknowledgePresentationCommand = vi.fn();
+    mocks.model = {
+      ...mocks.model,
+      phase: 'paired',
+      device: { id: 'device-1', allowedTeamIds: ['a'] },
+      config: { version: 'v1' },
+      screenState: { reloadNonce: 'command', presentationCommand: { id: 'command-1', type: 'next' } },
+      acknowledgePresentationCommand,
+    };
+    render(<DisplayRoute />);
+    expect(mocks.appProps).toEqual(expect.objectContaining({
+      readOnlyDisplay: true,
+      onPresentationCommandHandled: acknowledgePresentationCommand,
+    }));
   });
 });

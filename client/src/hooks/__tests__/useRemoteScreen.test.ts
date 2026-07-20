@@ -1,6 +1,7 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import React from 'react';
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ConfigResponse, ScreenState } from '@camtom/shared';
+import type { ConfigResponse, Issue, ScreenState } from '@camtom/shared';
 
 const mocks = vi.hoisted(() => ({
   fetchScreenFeatures: vi.fn(),
@@ -59,6 +60,37 @@ vi.mock('../../lib/supabase', () => {
 });
 
 import { useRemoteScreen } from '../useRemoteScreen';
+import { Dashboard } from '../../components/Dashboard';
+
+const presentationIssues: Issue[] = [1, 2, 3, 4, 5].map((value) => ({
+  id: String(value),
+  identifier: `ORDER-${value}`,
+  title: `Order ${value}`,
+  priority: 1,
+  priorityLabel: 'Urgent',
+  createdAt: '2026-07-20T10:00:00.000Z',
+  updatedAt: '2026-07-20T10:00:00.000Z',
+  state: { id: 'open', name: 'Open', type: 'unstarted' },
+}));
+
+function RemotePresentationHarness({ onExecute }: { onExecute: (commandId: string) => void }) {
+  const remote = useRemoteScreen();
+  return React.createElement(Dashboard, {
+    issues: presentationIssues,
+    doneToday: [],
+    timers: new Map(),
+    loading: false,
+    error: null,
+    config: remote.config,
+    presentationMode: true,
+    rotation: { enabled: true, intervalSeconds: 12, paused: true },
+    presentationCommand: remote.screenState?.presentationCommand,
+    onPresentationCommandHandled: (commandId: string) => {
+      onExecute(commandId);
+      void remote.acknowledgePresentationCommand(commandId);
+    },
+  });
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -72,8 +104,13 @@ function state(nonce: string): ScreenState {
     left: { teamId: 'a', view: 'board', filter }, right: { teamId: 'a', view: 'board', filter },
   } };
 }
-function row(version: number, revokedAt: string | null = null) {
-  return { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', display_name: 'TV1', desired_state: state(`v${version}`), state_version: version, last_applied_version: version - 1, last_seen_at: new Date().toISOString(), capabilities: {}, allowed_team_ids: ['a'], paired_at: '2026-07-16T10:00:00Z', revoked_at: revokedAt, created_at: '2026-07-16T10:00:00Z' };
+function row(
+  version: number,
+  revokedAt: string | null = null,
+  desiredState: ScreenState = state(`v${version}`),
+  lastAppliedVersion = version - 1,
+) {
+  return { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', display_name: 'TV1', desired_state: desiredState, state_version: version, last_applied_version: lastAppliedVersion, last_seen_at: new Date().toISOString(), capabilities: {}, allowed_team_ids: ['a'], paired_at: '2026-07-16T10:00:00Z', revoked_at: revokedAt, created_at: '2026-07-16T10:00:00Z' };
 }
 function config(title: string): ConfigResponse {
   return { version: title, slas: [], dashboard: { pollingInterval: 30_000, title, teamMembers: [], displayOrder: [], priorityLabels: {}, stateLabels: {}, report: { slaWindowHours: 24, enabled: true }, kitchenPhrases: { emptyState: '', warningTimer: '', breachedTimer: '' }, teams: [{ id: 'a', name: 'A', filter: 'active-states', timer: true }] } };
@@ -141,6 +178,71 @@ describe('useRemoteScreen monotonic coordinator', () => {
 
     expect(result.current.screenState?.reloadNonce).toBe('v2');
     expect(mocks.rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('executes v1 presentation commands before ACK and strips them after ACK or reload', async () => {
+    const commandState: ScreenState = {
+      ...state('command-v2'),
+      presentationCommand: { id: 'command-2', type: 'next' },
+    };
+    mocks.selectDevice.mockResolvedValue({ data: [row(2, null, commandState, 1)], error: null });
+    mocks.fetchDeviceConfig.mockResolvedValue(config('v2'));
+    const first = renderHook(() => useRemoteScreen());
+    await waitFor(() => expect(first.result.current.screenState?.presentationCommand?.id).toBe('command-2'));
+    expect(mocks.rpc).not.toHaveBeenCalledWith('screen_device_ack', expect.objectContaining({ p_applied_version: 2 }));
+
+    await act(async () => {
+      await first.result.current.acknowledgePresentationCommand('command-2');
+    });
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith(
+      'screen_device_ack',
+      expect.objectContaining({ p_applied_version: 2 }),
+    ));
+    await waitFor(() => expect(first.result.current.screenState?.presentationCommand).toBeUndefined());
+    first.unmount();
+
+    vi.clearAllMocks();
+    mocks.fetchScreenFeatures.mockResolvedValue({
+      screenControlEnabled: true, requirePairing: true,
+      captchaProvider: 'turnstile', captchaSiteKey: 'site-key', configurationError: null,
+    });
+    mocks.getSession.mockResolvedValue({ data: { session: { access_token: 'tv-token', user: { id: 'user-1', is_anonymous: true } } } });
+    mocks.selectDevice.mockResolvedValue({ data: [row(2, null, commandState, 2)], error: null });
+    mocks.fetchDeviceConfig.mockResolvedValue(config('v2-reload'));
+    const reloaded = renderHook(() => useRemoteScreen());
+    await waitFor(() => expect(reloaded.result.current.phase).toBe('paired'));
+    expect(reloaded.result.current.screenState?.presentationCommand).toBeUndefined();
+    expect(mocks.rpc).not.toHaveBeenCalledWith('screen_device_ack', expect.anything());
+  });
+
+  it('retries a failed v1 command ACK on polling without re-executing the committed command', async () => {
+    const commandState: ScreenState = {
+      ...state('command-v2'),
+      presentationCommand: { id: 'command-retry', type: 'next' },
+    };
+    let ackAttempts = 0;
+    mocks.selectDevice.mockResolvedValue({ data: [row(2, null, commandState, 1)], error: null });
+    mocks.fetchDeviceConfig.mockResolvedValue(config('v2'));
+    mocks.rpc.mockImplementation(async (name: string, args: { p_applied_version?: number }) => {
+      if (name === 'screen_device_ack' && args.p_applied_version === 2) {
+        ackAttempts++;
+        return ackAttempts === 1
+          ? { data: null, error: { message: 'temporary ACK failure' } }
+          : { data: true, error: null };
+      }
+      return { data: true, error: null };
+    });
+    const execute = vi.fn();
+    render(React.createElement(RemotePresentationHarness, { onExecute: execute }));
+
+    await waitFor(() => expect(execute).toHaveBeenCalledOnce());
+    expect(screen.getByText('Order 5')).toBeInTheDocument();
+    await waitFor(() => expect(ackAttempts).toBe(1));
+
+    act(() => { mocks.changeHandler?.({ new: row(2, null, commandState, 1) }); });
+    await waitFor(() => expect(ackAttempts).toBe(2));
+    expect(execute).toHaveBeenCalledOnce();
+    expect(screen.getByText('Order 5')).toBeInTheDocument();
   });
 
   it('fails closed on an out-of-scope config refresh and recovers at the same state version', async () => {
