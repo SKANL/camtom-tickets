@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { EMPTY_FILTER, ScreenPaneState, ScreenState, validateScreenState } from '@camtom/shared';
+import { EMPTY_FILTER, ScreenPaneState, ScreenState, validateScreenState, withoutPresentationCommand } from '@camtom/shared';
 
 export const SCREEN_STATE_STORAGE_KEY = 'camtom-screen-state-v1';
 
@@ -9,6 +9,7 @@ export function createDefaultScreenState(teamIds: readonly string[], legacyActiv
   return {
     schemaVersion: 1,
     layout: 'single',
+    rotation: { enabled: true, intervalSeconds: 12, paused: false },
     panes: {
       left: createPane(leftId),
       right: createPane(rightId),
@@ -21,7 +22,7 @@ export function loadScreenState(teamIds: readonly string[], legacyActiveTeamId?:
     const raw = localStorage.getItem(SCREEN_STATE_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (validateScreenState(parsed, teamIds).length === 0) return parsed;
+      if (validateScreenState(parsed, teamIds).length === 0) return withoutPresentationCommand(parsed);
     }
   } catch {
     // Fall through to a safe compatible default.
@@ -34,7 +35,7 @@ export function reconcileScreenState(
   teamIds: readonly string[],
   legacyActiveTeamId?: string,
 ): ScreenState {
-  if (validateScreenState(current, teamIds).length === 0) return current;
+  if (validateScreenState(current, teamIds).length === 0) return withoutPresentationCommand(current);
   const fallback = createDefaultScreenState(teamIds, legacyActiveTeamId);
   const left = isValidPane(current.panes.left, teamIds) ? current.panes.left : fallback.panes.left;
   const right = isValidPane(current.panes.right, teamIds)
@@ -43,6 +44,9 @@ export function reconcileScreenState(
   return {
     schemaVersion: 1,
     layout: current.layout === 'split-vertical' && teamIds.length > 0 ? 'split-vertical' : 'single',
+    muted: current.muted,
+    reloadNonce: current.reloadNonce,
+    rotation: current.rotation ?? fallback.rotation,
     panes: { left, right },
   };
 }
@@ -65,7 +69,7 @@ export function useScreenState(teamIds: readonly string[], legacyActiveTeamId?: 
 
   useEffect(() => {
     try {
-      localStorage.setItem(SCREEN_STATE_STORAGE_KEY, JSON.stringify(state));
+      localStorage.setItem(SCREEN_STATE_STORAGE_KEY, JSON.stringify(withoutPresentationCommand(state)));
     } catch {
       // Screen state remains usable for this tab if persistence is unavailable.
     }

@@ -39,11 +39,40 @@ export function createConfigV2(config: Pick<ConfigResponse, 'dashboard' | 'slas'
   };
 }
 
+export function withoutPresentationCommand(state: ScreenState): ScreenState {
+  if (!state.presentationCommand) return state;
+  const { presentationCommand: _command, ...persistentState } = state;
+  return persistentState;
+}
+
+export function canonicalizeTeamDisplayOrder(settings: TeamDashboardSettings): TeamDashboardSettings {
+  const order = settings.displayOrder.length > 0
+    ? settings.displayOrder
+    : settings.displayOptions.columnOrder?.length
+      ? settings.displayOptions.columnOrder
+      : [1, 2, 3, 4, 0];
+  return {
+    ...settings,
+    displayOrder: [...order],
+    displayOptions: { ...settings.displayOptions, columnOrder: [...order] },
+  };
+}
+
+export function canonicalizeConfigV2(config: ConfigV2): ConfigV2 {
+  return {
+    ...config,
+    teams: Object.fromEntries(Object.entries(config.teams).map(([teamId, settings]) => [
+      teamId,
+      canonicalizeTeamDisplayOrder(settings),
+    ])),
+  };
+}
+
 export function resolveTeamSettings(config: ConfigResponse, teamId: string): TeamDashboardSettings {
   const v2 = config.configV2 ?? createConfigV2(config);
   const team = (config.dashboard.teams ?? []).find((candidate) => candidate.id === teamId);
   const settings = v2.teams[teamId] ?? legacySettings(config.dashboard, config.slas, team);
-  return cloneSettings(settings);
+  return canonicalizeTeamDisplayOrder(cloneSettings(settings));
 }
 
 export function materializeTeamConfig(config: ConfigResponse, teamId: string): ConfigResponse {
@@ -107,6 +136,25 @@ export function validateScreenState(value: unknown, configuredTeamIds?: readonly
     && (typeof value.reloadNonce !== 'string' || value.reloadNonce.length > 100)) {
     errors.push('screen reloadNonce is invalid');
   }
+  if (value.rotation !== undefined) {
+    if (!isRecord(value.rotation)) errors.push('screen rotation must be an object');
+    else {
+      if (typeof value.rotation.enabled !== 'boolean') errors.push('screen rotation enabled must be boolean');
+      if (!isPositiveInt(value.rotation.intervalSeconds) || value.rotation.intervalSeconds < 5 || value.rotation.intervalSeconds > 300) {
+        errors.push('screen rotation intervalSeconds must be between 5 and 300');
+      }
+      if (typeof value.rotation.paused !== 'boolean') errors.push('screen rotation paused must be boolean');
+    }
+  }
+  if (value.presentationCommand !== undefined) {
+    if (!isRecord(value.presentationCommand)
+      || typeof value.presentationCommand.id !== 'string'
+      || value.presentationCommand.id.length < 1
+      || value.presentationCommand.id.length > 100
+      || !['next', 'previous', 'restartRotation'].includes(String(value.presentationCommand.type))) {
+      errors.push('screen presentationCommand is invalid');
+    }
+  }
   if (!isRecord(value.panes)) return [...errors, 'screen panes must be an object'];
   errors.push(...validatePane(value.panes.left, 'left', configuredTeamIds));
   errors.push(...validatePane(value.panes.right, 'right', configuredTeamIds));
@@ -148,19 +196,22 @@ function legacySettings(
   slas: ConfigResponse['slas'],
   team?: TeamBoardConfig,
 ): TeamDashboardSettings {
+  const displayOrder = dashboard.displayOptions?.columnOrder?.length
+    ? dashboard.displayOptions.columnOrder
+    : dashboard.displayOrder;
   return {
     filter: team?.filter ?? 'active-states',
     timer: team?.timer ?? true,
     ...(team?.accent ? { accent: team.accent } : {}),
     slas: structuredCloneSafe(slas),
     teamMembers: [...dashboard.teamMembers],
-    displayOrder: [...dashboard.displayOrder],
+    displayOrder: [...displayOrder],
     priorityLabels: structuredCloneSafe(dashboard.priorityLabels),
     stateLabels: structuredCloneSafe(dashboard.stateLabels),
     report: { ...dashboard.report },
     kitchenPhrases: { ...dashboard.kitchenPhrases },
     zoneLabels: { ...DEFAULT_ZONES, ...dashboard.zoneLabels },
-    displayOptions: { ...dashboard.displayOptions },
+    displayOptions: { ...dashboard.displayOptions, columnOrder: [...displayOrder] },
   };
 }
 

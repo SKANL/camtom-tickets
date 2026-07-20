@@ -160,12 +160,30 @@ export interface ScreenPaneState {
   filter: FilterState;
 }
 
+export interface ScreenRotationState {
+  /** Automatically advance presentation pages when a TV has more tickets than fit. */
+  enabled: boolean;
+  /** Clamped by clients to a safe minimum; defaults to 12 seconds. */
+  intervalSeconds: number;
+  paused: boolean;
+}
+
+export interface ScreenPresentationCommand {
+  /** Unique per command so a display applies it exactly once, even after reconnecting. */
+  id: string;
+  type: 'next' | 'previous' | 'restartRotation';
+}
+
 export interface ScreenState {
   schemaVersion: 1;
   layout: 'single' | 'split-vertical';
   muted?: boolean;
   /** Changes trigger an in-app remount; this never reloads the browser or OS. */
   reloadNonce?: string;
+  /** Optional for protocol-v1 compatibility; displays materialize the 12-second default. */
+  rotation?: ScreenRotationState;
+  /** Optional transient instruction carried by the existing versioned state payload. */
+  presentationCommand?: ScreenPresentationCommand;
   panes: {
     left: ScreenPaneState;
     right: ScreenPaneState;

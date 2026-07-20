@@ -55,7 +55,7 @@ describe('config v2 compatibility and resolution', () => {
     delete config.dashboard.displayOptions;
     const v2 = createConfigV2(config);
     expect(v2.teams.a.zoneLabels).toEqual({ new: 'Sin tomar', active: 'En progreso', done: 'Servidos hoy' });
-    expect(v2.teams.a.displayOptions).toEqual({});
+    expect(v2.teams.a.displayOptions).toEqual({ columnOrder: [1, 2, 3, 4, 0] });
     expect(validateConfigV2(v2, ['a', 'b'])).toEqual([]);
   });
 });
